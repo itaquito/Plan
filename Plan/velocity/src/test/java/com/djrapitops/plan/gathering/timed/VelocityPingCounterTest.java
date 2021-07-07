@@ -19,6 +19,7 @@ package com.djrapitops.plan.gathering.timed;
 import com.djrapitops.plan.PlanVelocity;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import net.playeranalytics.plugin.server.Listeners;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -34,9 +35,9 @@ import static org.mockito.Mockito.when;
 /**
  * Tests for {@link VelocityPingCounter}.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public class VelocityPingCounterTest {
+class VelocityPingCounterTest {
 
     private PlanVelocity plugin;
     private Player player;
@@ -57,7 +58,7 @@ public class VelocityPingCounterTest {
 
     @Test
     void offlinePlayerIsRemovedFromPlayerHistory() {
-        VelocityPingCounter counter = new VelocityPingCounter(plugin, null, null, null, null);
+        VelocityPingCounter counter = new VelocityPingCounter(Mockito.mock(Listeners.class), plugin, null, null, null, null);
 
         assertTrue(counter.playerHistory.isEmpty());
         counter.addPlayer(player);

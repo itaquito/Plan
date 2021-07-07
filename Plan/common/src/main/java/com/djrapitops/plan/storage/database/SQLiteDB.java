@@ -24,13 +24,13 @@ import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.file.PlanFiles;
 import com.djrapitops.plan.storage.upkeep.DBKeepAliveTask;
 import com.djrapitops.plan.utilities.MiscUtils;
-import com.djrapitops.plan.utilities.java.ThrowableUtils;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
-import com.djrapitops.plugin.task.PluginTask;
-import com.djrapitops.plugin.task.RunnableFactory;
+import com.djrapitops.plan.utilities.SemaphoreAccessCounter;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 import dagger.Lazy;
+import net.playeranalytics.plugin.scheduling.RunnableFactory;
+import net.playeranalytics.plugin.scheduling.Task;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -41,14 +41,21 @@ import java.sql.SQLException;
 import java.util.Objects;
 
 /**
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class SQLiteDB extends SQLDB {
 
     private final File databaseFile;
     private final String dbName;
     private Connection connection;
-    private PluginTask connectionPingTask;
+    private Task connectionPingTask;
+
+    /*
+     * In charge of keeping a single thread in control of the connection to avoid
+     * one thread closing the connection while another is executing a statement as
+     * that might lead to a SIGSEGV signal JVM crash.
+     */
+    private final SemaphoreAccessCounter connectionLock = new SemaphoreAccessCounter();
 
     private SQLiteDB(
             File databaseFile,
@@ -57,9 +64,9 @@ public class SQLiteDB extends SQLDB {
             Lazy<ServerInfo> serverInfo,
             RunnableFactory runnableFactory,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
-        super(() -> serverInfo.get().getServerUUID(), locale, config, runnableFactory, logger, errorHandler);
+        super(() -> serverInfo.get().getServerUUID(), locale, config, runnableFactory, logger, errorLogger);
         dbName = databaseFile.getName();
         this.databaseFile = databaseFile;
     }
@@ -80,14 +87,13 @@ public class SQLiteDB extends SQLDB {
         try {
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException e) {
-            errorHandler.log(L.CRITICAL, this.getClass(), e);
-            return null; // Should never happen.
+            errorLogger.critical(e, ErrorContext.builder().whatToDo("Install SQLite Driver to the server").build());
+            return null;
         }
 
         String dbFilePath = dbFile.getAbsolutePath();
 
         Connection newConnection = getConnectionFor(dbFilePath);
-        logger.debug("SQLite " + dbName + ": Opened a new Connection");
         newConnection.setAutoCommit(false);
         return newConnection;
     }
@@ -105,8 +111,8 @@ public class SQLiteDB extends SQLDB {
         stopConnectionPingTask();
         try {
             // Maintains Connection.
-            connectionPingTask = runnableFactory.create("DBConnectionPingTask " + getType().getName(),
-                    new DBKeepAliveTask(connection, () -> getNewConnection(databaseFile), logger, errorHandler)
+            connectionPingTask = runnableFactory.create(
+                    new DBKeepAliveTask(connection, () -> getNewConnection(databaseFile), logger, errorLogger)
             ).runTaskTimerAsynchronously(60L * 20L, 60L * 20L);
         } catch (Exception ignored) {
             // Task failed to register because plugin is being disabled
@@ -134,25 +140,26 @@ public class SQLiteDB extends SQLDB {
         if (connection == null) {
             connection = getNewConnection(databaseFile);
         }
+        connectionLock.enter();
         return connection;
     }
 
     @Override
     public void close() {
-        logger.debug("SQLite Connection close prompted by: " + ThrowableUtils.findCallerAfterClass(Thread.currentThread().getStackTrace(), SQLiteDB.class));
-
         super.close();
         stopConnectionPingTask();
 
+        logger.info(locale.getString(PluginLang.DISABLED_WAITING_SQLITE));
+        connectionLock.waitUntilNothingAccessing();
         if (connection != null) {
-            logger.debug("SQLite " + dbName + ": Closed Connection");
             MiscUtils.close(connection);
         }
+        logger.info(locale.getString(PluginLang.DISABLED_WAITING_SQLITE_COMPLETE));
     }
 
     @Override
     public void returnToPool(Connection connection) {
-        // Connection pool not in use, no action required.
+        connectionLock.exit();
     }
 
     @Override
@@ -177,7 +184,7 @@ public class SQLiteDB extends SQLDB {
         private final Lazy<ServerInfo> serverInfo;
         private final RunnableFactory runnableFactory;
         private final PluginLogger logger;
-        private final ErrorHandler errorHandler;
+        private final ErrorLogger errorLogger1;
         private final PlanFiles files;
 
         @Inject
@@ -188,7 +195,7 @@ public class SQLiteDB extends SQLDB {
                 Lazy<ServerInfo> serverInfo,
                 RunnableFactory runnableFactory,
                 PluginLogger logger,
-                ErrorHandler errorHandler
+                ErrorLogger errorLogger1
         ) {
             this.locale = locale;
             this.config = config;
@@ -196,7 +203,7 @@ public class SQLiteDB extends SQLDB {
             this.serverInfo = serverInfo;
             this.runnableFactory = runnableFactory;
             this.logger = logger;
-            this.errorHandler = errorHandler;
+            this.errorLogger1 = errorLogger1;
         }
 
         public SQLiteDB usingDefaultFile() {
@@ -210,7 +217,7 @@ public class SQLiteDB extends SQLDB {
         public SQLiteDB usingFile(File databaseFile) {
             return new SQLiteDB(databaseFile,
                     locale, config, serverInfo,
-                    runnableFactory, logger, errorHandler
+                    runnableFactory, logger, errorLogger1
             );
         }
 

@@ -16,22 +16,21 @@
  */
 package com.djrapitops.plan.extension;
 
-import com.djrapitops.plan.DebugChannels;
-import com.djrapitops.plan.delivery.webserver.cache.DataID;
-import com.djrapitops.plan.delivery.webserver.cache.JSONCache;
-import com.djrapitops.plan.exceptions.DataExtensionMethodCallException;
+import com.djrapitops.plan.extension.builder.ExtensionDataBuilder;
 import com.djrapitops.plan.extension.implementation.CallerImplementation;
 import com.djrapitops.plan.extension.implementation.ExtensionRegister;
 import com.djrapitops.plan.extension.implementation.ExtensionWrapper;
-import com.djrapitops.plan.extension.implementation.providers.gathering.ProviderValueGatherer;
+import com.djrapitops.plan.extension.implementation.builder.ExtDataBuilder;
+import com.djrapitops.plan.extension.implementation.providers.gathering.DataValueGatherer;
 import com.djrapitops.plan.identification.ServerInfo;
+import com.djrapitops.plan.identification.UUIDUtility;
 import com.djrapitops.plan.processing.Processing;
 import com.djrapitops.plan.settings.config.ExtensionSettings;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.storage.database.DBSystem;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -44,7 +43,7 @@ import java.util.UUID;
 /**
  * Implementation for {@link ExtensionService}.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class ExtensionSvc implements ExtensionService {
@@ -54,10 +53,11 @@ public class ExtensionSvc implements ExtensionService {
     private final ServerInfo serverInfo;
     private final Processing processing;
     private final ExtensionRegister extensionRegister;
+    private final UUIDUtility uuidUtility;
     private final PluginLogger logger;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
-    private final Map<String, ProviderValueGatherer> extensionGatherers;
+    private final Map<String, DataValueGatherer> extensionGatherers;
 
     @Inject
     public ExtensionSvc(
@@ -66,16 +66,18 @@ public class ExtensionSvc implements ExtensionService {
             ServerInfo serverInfo,
             Processing processing,
             ExtensionRegister extensionRegister,
+            UUIDUtility uuidUtility,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.config = config;
         this.dbSystem = dbSystem;
         this.serverInfo = serverInfo;
         this.processing = processing;
         this.extensionRegister = extensionRegister;
+        this.uuidUtility = uuidUtility;
         this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
 
         extensionGatherers = new HashMap<>();
     }
@@ -88,23 +90,29 @@ public class ExtensionSvc implements ExtensionService {
         try {
             extensionRegister.registerBuiltInExtensions(config.getExtensionSettings().getDisabled());
         } catch (IllegalStateException failedToRegisterOne) {
-            logger.warn("One or more extensions failed to register, see suppressed exceptions (They can be disabled in Plan config).");
-            errorHandler.log(L.WARN, ExtensionService.class, failedToRegisterOne);
+            ErrorContext.Builder context = ErrorContext.builder()
+                    .whatToDo("Report and/or disable the failed extensions. You can find the failed extensions in the error file.");
+            for (Throwable suppressedException : failedToRegisterOne.getSuppressed()) {
+                context.related(suppressedException.getMessage());
+            }
+
+            logger.warn("One or more extensions failed to register (They can be disabled in Plan config).");
+            errorLogger.warn(failedToRegisterOne, context.build());
         }
     }
 
     @Override
-    public Optional<Caller> register(DataExtension extension) {
-        ExtensionWrapper extractor = new ExtensionWrapper(extension);
-        String pluginName = extractor.getPluginName();
+    public Optional<Caller> register(DataExtension dataExtension) {
+        ExtensionWrapper extension = new ExtensionWrapper(dataExtension);
+        String pluginName = extension.getPluginName();
 
         if (shouldNotAllowRegistration(pluginName)) return Optional.empty();
 
-        for (String warning : extractor.getWarnings()) {
+        for (String warning : extension.getWarnings()) {
             logger.warn("DataExtension API implementation mistake for " + pluginName + ": " + warning);
         }
 
-        ProviderValueGatherer gatherer = new ProviderValueGatherer(extractor, dbSystem, serverInfo);
+        DataValueGatherer gatherer = new DataValueGatherer(extension, dbSystem, serverInfo, errorLogger);
         gatherer.storeExtensionInformation();
         extensionGatherers.put(pluginName, gatherer);
 
@@ -116,11 +124,12 @@ public class ExtensionSvc implements ExtensionService {
 
     @Override
     public void unregister(DataExtension extension) {
-        ExtensionWrapper extractor = new ExtensionWrapper(extension);
-        String pluginName = extractor.getPluginName();
-        if (extensionGatherers.remove(pluginName) != null) {
-            logger.getDebugLogger().logOn(DebugChannels.DATA_EXTENSIONS, pluginName + " extension unregistered.");
-        }
+        extensionGatherers.remove(extension.getPluginName());
+    }
+
+    @Override
+    public ExtensionDataBuilder newExtensionDataBuilder(DataExtension extension) {
+        return new ExtDataBuilder(extension);
     }
 
     private boolean shouldNotAllowRegistration(String pluginName) {
@@ -130,85 +139,47 @@ public class ExtensionSvc implements ExtensionService {
             try {
                 pluginsConfig.createSection(pluginName);
             } catch (IOException e) {
-                errorHandler.log(L.ERROR, this.getClass(), e);
+                errorLogger.warn(e, ErrorContext.builder()
+                        .whatToDo("Create 'Plugins." + pluginName + ".Enabled: true' setting manually.")
+                        .related("Section: " + pluginName).build());
                 logger.warn("Could not register DataExtension for " + pluginName + " due to " + e.toString());
                 return true;
             }
         }
 
-        if (!pluginsConfig.isEnabled(pluginName)) {
-            logger.getDebugLogger().logOn(DebugChannels.DATA_EXTENSIONS, pluginName + " extension disabled in the config.");
-            return true;
-        }
-        return false; // Should register.
+        // Should the extension not be registered?
+        return !pluginsConfig.isEnabled(pluginName);
     }
 
     public void updatePlayerValues(UUID playerUUID, String playerName, CallEvents event) {
-        for (ProviderValueGatherer gatherer : extensionGatherers.values()) {
+        for (DataValueGatherer gatherer : extensionGatherers.values()) {
             updatePlayerValues(gatherer, playerUUID, playerName, event);
         }
     }
 
-    public void updatePlayerValues(ProviderValueGatherer gatherer, UUID playerUUID, String playerName, CallEvents event) {
+    public void updatePlayerValues(DataValueGatherer gatherer, UUID playerUUID, String playerName, CallEvents event) {
         if (gatherer.shouldSkipEvent(event)) return;
         if (playerUUID == null && playerName == null) return;
 
-        try {
-            logger.getDebugLogger().logOn(DebugChannels.DATA_EXTENSIONS, "Gathering values for: " + playerName);
+        UUID realUUID = playerUUID != null ? playerUUID : uuidUtility.getUUIDOf(playerName);
+        if (realUUID == null) return;
 
-            gatherer.updateValues(playerUUID, playerName);
+        String realPlayerName = playerName != null ?
+                playerName :
+                uuidUtility.getNameOf(realUUID).orElse(null);
 
-            logger.getDebugLogger().logOn(DebugChannels.DATA_EXTENSIONS, "Gathering completed:  " + playerName);
-        } catch (DataExtensionMethodCallException methodCallFailed) {
-            logFailure(playerName, methodCallFailed);
-            methodCallFailed.getMethod().ifPresent(gatherer::disableMethodFromUse);
-            // Try again
-            updatePlayerValues(gatherer, playerUUID, playerName, event);
-        } catch (Exception | NoClassDefFoundError | NoSuchFieldError | NoSuchMethodError unexpectedError) {
-            logger.warn("Encountered unexpected error with " + gatherer.getPluginName() + " Extension: " + unexpectedError +
-                    " (but failed safely) when updating value for '" + playerName +
-                    "', stack trace to follow (please report this):");
-            errorHandler.log(L.WARN, gatherer.getClass(), unexpectedError);
-        }
-    }
-
-    private void logFailure(String playerName, DataExtensionMethodCallException methodCallFailed) {
-        Throwable cause = methodCallFailed.getCause();
-        String causeName = cause.getClass().getSimpleName();
-        logger.warn("Encountered " + causeName + " with " + methodCallFailed.getPluginName() + " Extension" +
-                " (failed safely) when updating value for '" + playerName +
-                "', the method was disabled temporarily (won't be called until next Plan reload)" +
-                ", stack trace to follow (please report this):");
-        errorHandler.log(L.WARN, getClass(), cause);
+        gatherer.updateValues(realUUID, realPlayerName);
     }
 
     public void updateServerValues(CallEvents event) {
-        for (ProviderValueGatherer gatherer : extensionGatherers.values()) {
+        for (DataValueGatherer gatherer : extensionGatherers.values()) {
             updateServerValues(gatherer, event);
         }
-        UUID serverUUID = serverInfo.getServerUUID();
-        JSONCache.invalidate(DataID.EXTENSION_NAV, serverUUID);
-        JSONCache.invalidate(DataID.EXTENSION_TABS, serverUUID);
     }
 
-    public void updateServerValues(ProviderValueGatherer gatherer, CallEvents event) {
+    public void updateServerValues(DataValueGatherer gatherer, CallEvents event) {
         if (gatherer.shouldSkipEvent(event)) return;
 
-        try {
-            logger.getDebugLogger().logOn(DebugChannels.DATA_EXTENSIONS, "Gathering values for server");
-
-            gatherer.updateValues();
-
-            logger.getDebugLogger().logOn(DebugChannels.DATA_EXTENSIONS, "Gathering completed for server");
-        } catch (DataExtensionMethodCallException methodCallFailed) {
-            logFailure("server", methodCallFailed);
-            methodCallFailed.getMethod().ifPresent(gatherer::disableMethodFromUse);
-            // Try again
-            updateServerValues(gatherer, event);
-        } catch (Exception | NoClassDefFoundError | NoSuchFieldError | NoSuchMethodError unexpectedError) {
-            logger.warn("Encountered unexpected error with " + gatherer.getPluginName() + " Extension: " + unexpectedError +
-                    " (failed safely) when updating value for server, stack trace to follow (please report this):");
-            errorHandler.log(L.WARN, gatherer.getClass(), unexpectedError);
-        }
+        gatherer.updateValues();
     }
 }

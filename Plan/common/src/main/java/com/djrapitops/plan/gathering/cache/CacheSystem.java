@@ -17,6 +17,8 @@
 package com.djrapitops.plan.gathering.cache;
 
 import com.djrapitops.plan.SubSystem;
+import com.djrapitops.plan.commands.TabCompleteCache;
+import com.djrapitops.plan.delivery.webserver.cache.JSONStorage;
 import com.djrapitops.plan.gathering.geolocation.GeolocationCache;
 
 import javax.inject.Inject;
@@ -25,30 +27,38 @@ import javax.inject.Singleton;
 /**
  * System that holds data caches of the plugin.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class CacheSystem implements SubSystem {
 
+    private final TabCompleteCache tabCompleteCache;
     private final SessionCache sessionCache;
     private final NicknameCache nicknameCache;
     private final GeolocationCache geolocationCache;
+    private final JSONStorage jsonStorage;
 
     @Inject
     public CacheSystem(
+            TabCompleteCache tabCompleteCache,
             SessionCache sessionCache,
             NicknameCache nicknameCache,
-            GeolocationCache geolocationCache
+            GeolocationCache geolocationCache,
+            JSONStorage jsonStorage
     ) {
+        this.tabCompleteCache = tabCompleteCache;
         this.sessionCache = sessionCache;
         this.nicknameCache = nicknameCache;
         this.geolocationCache = geolocationCache;
+        this.jsonStorage = jsonStorage;
     }
 
     @Override
     public void enable() {
         nicknameCache.enable();
         geolocationCache.enable();
+        tabCompleteCache.enable();
+        jsonStorage.enable();
     }
 
     @Override

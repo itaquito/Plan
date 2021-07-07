@@ -16,27 +16,31 @@
  */
 package com.djrapitops.plan.gathering.timed;
 
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
-import com.djrapitops.plugin.task.AbsRunnable;
+import com.djrapitops.plan.TaskSystem;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.scheduling.RunnableFactory;
+import net.playeranalytics.plugin.scheduling.TimeAmount;
+import net.playeranalytics.plugin.server.PluginLogger;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Class responsible for calculating TPS every second.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public abstract class TPSCounter extends AbsRunnable {
+public abstract class TPSCounter extends TaskSystem.Task {
 
     protected final PluginLogger logger;
-    protected final ErrorHandler errorHandler;
+    protected final ErrorLogger errorLogger;
 
-    public TPSCounter(
+    protected TPSCounter(
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     @Override
@@ -45,9 +49,15 @@ public abstract class TPSCounter extends AbsRunnable {
             pulse();
         } catch (Exception | NoClassDefFoundError | NoSuchMethodError | NoSuchFieldError e) {
             logger.error("TPS Count Task Disabled due to error, reload Plan to re-enable.");
-            errorHandler.log(L.ERROR, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder().whatToDo("See if a restart fixes this or Report this").build());
             cancel();
         }
+    }
+
+    public void register(RunnableFactory runnableFactory) {
+        long delay = TimeAmount.toTicks(1L, TimeUnit.MINUTES);
+        long period = TimeAmount.toTicks(1L, TimeUnit.SECONDS);
+        runnableFactory.create(this).runTaskTimer(delay, period);
     }
 
     public abstract void pulse();

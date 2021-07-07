@@ -19,16 +19,16 @@ package com.djrapitops.plan.delivery.webserver;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.PluginSettings;
 import com.djrapitops.plan.settings.config.paths.WebserverSettings;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import java.io.IOException;
 
 /**
  * In charge of disabling Webserver if a Proxy server is detected in the database.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class NonProxyWebserverDisableChecker implements Runnable {
 
@@ -36,20 +36,20 @@ public class NonProxyWebserverDisableChecker implements Runnable {
     private final Addresses addresses;
     private final WebServerSystem webServerSystem;
     private final PluginLogger logger;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     public NonProxyWebserverDisableChecker(
             PlanConfig config,
             Addresses addresses,
             WebServerSystem webServerSystem,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.config = config;
         this.addresses = addresses;
         this.webServerSystem = webServerSystem;
         this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     @Override
@@ -73,9 +73,10 @@ public class NonProxyWebserverDisableChecker implements Runnable {
             config.set(WebserverSettings.DISABLED, true);
             config.save();
             logger.warn("Note: Set '" + WebserverSettings.DISABLED.getPath() + "' to true");
-
         } catch (IOException e) {
-            errorHandler.log(L.WARN, this.getClass(), e);
+            errorLogger.warn(e, ErrorContext.builder()
+                    .whatToDo("Set '" + WebserverSettings.DISABLED.getPath() + "' to true manually.")
+                    .related("Disabling webserver in config setting", WebserverSettings.DISABLED.getPath()).build());
         }
     }
 }

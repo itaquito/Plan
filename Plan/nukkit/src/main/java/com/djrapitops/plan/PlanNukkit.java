@@ -16,37 +16,65 @@
  */
 package com.djrapitops.plan;
 
+import cn.nukkit.Player;
+import cn.nukkit.Server;
+import cn.nukkit.command.Command;
+import cn.nukkit.command.CommandSender;
+import cn.nukkit.plugin.PluginBase;
 import com.djrapitops.plan.addons.placeholderapi.NukkitPlaceholderRegistrar;
-import com.djrapitops.plan.commands.PlanCommand;
+import com.djrapitops.plan.commands.use.*;
 import com.djrapitops.plan.exceptions.EnableException;
 import com.djrapitops.plan.gathering.ServerShutdownSave;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.settings.theme.PlanColorScheme;
-import com.djrapitops.plugin.NukkitPlugin;
-import com.djrapitops.plugin.benchmarking.Benchmark;
-import com.djrapitops.plugin.command.ColorScheme;
-import com.djrapitops.plugin.task.AbsRunnable;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import net.playeranalytics.plugin.NukkitPlatformLayer;
+import net.playeranalytics.plugin.PlatformAbstractionLayer;
+import net.playeranalytics.plugin.scheduling.RunnableFactory;
+import net.playeranalytics.plugin.server.PluginLogger;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Main class for Nukkit that manages the plugin.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public class PlanNukkit extends NukkitPlugin implements PlanPlugin {
+public class PlanNukkit extends PluginBase implements PlanPlugin {
 
     private PlanSystem system;
     private Locale locale;
     private ServerShutdownSave serverShutdownSave;
 
+    private final Map<String, Subcommand> commands = new HashMap<>();
+    private PluginLogger logger;
+    private RunnableFactory runnableFactory;
+    private PlatformAbstractionLayer abstractionLayer;
+
+    @Override
+    public void onLoad() {
+        abstractionLayer = new NukkitPlatformLayer(this);
+        logger = abstractionLayer.getPluginLogger();
+        runnableFactory = abstractionLayer.getRunnableFactory();
+    }
+
     @Override
     public void onEnable() {
-        PlanNukkitComponent component = DaggerPlanNukkitComponent.builder().plan(this).build();
+        PlanNukkitComponent component = DaggerPlanNukkitComponent.builder()
+                .plan(this)
+                .abstractionLayer(abstractionLayer)
+                .build();
         try {
-            timings.start("Enable");
             system = component.system();
             serverShutdownSave = component.serverShutdownSave();
             locale = system.getLocaleSystem().getLocale();
@@ -54,9 +82,7 @@ public class PlanNukkit extends NukkitPlugin implements PlanPlugin {
 
             registerPlaceholderAPI(component.placeholders());
 
-            logger.debug("Verbose debug messages are enabled.");
-            String benchTime = " (" + timings.end("Enable").map(Benchmark::toDurationString).orElse("-") + ")";
-            logger.info(locale.getString(PluginLang.ENABLED) + benchTime);
+            logger.info(locale.getString(PluginLang.ENABLED));
         } catch (AbstractMethodError e) {
             logger.error("Plugin ran into AbstractMethodError - Server restart is required. Likely cause is updating the jar without a restart.");
         } catch (EnableException e) {
@@ -66,14 +92,14 @@ public class PlanNukkit extends NukkitPlugin implements PlanPlugin {
             logger.error("Plugin Failed to Initialize Correctly. If this issue is caused by config settings you can use /plan reload");
             onDisable();
         } catch (Exception e) {
-            Logger.getGlobal().log(Level.SEVERE, this.getClass().getSimpleName() + "-v" + getVersion(), e);
+            String version = abstractionLayer.getPluginInformation().getVersion();
+            Logger.getGlobal().log(Level.SEVERE, e, () -> this.getClass().getSimpleName() + "-v" + version);
             logger.error("Plugin Failed to Initialize Correctly. If this issue is caused by config settings you can use /plan reload");
-            logger.error("This error should be reported at https://github.com/Rsl1122/Plan-PlayerAnalytics/issues");
+            logger.error("This error should be reported at https://github.com/plan-player-analytics/Plan/issues");
             onDisable();
         }
-        PlanCommand command = component.planCommand();
-        command.registerCommands();
-        registerCommand("plan", command);
+
+        registerCommand(component.planCommand().build());
         if (system != null) {
             system.getProcessing().submitNonCritical(() -> system.getListenerSystem().callEnableEvent(this));
         }
@@ -84,34 +110,72 @@ public class PlanNukkit extends NukkitPlugin implements PlanPlugin {
         return PlanColorScheme.create(system.getConfigSystem().getConfig(), logger);
     }
 
-    /**
-     * Disables the plugin.
-     */
     @Override
     public void onDisable() {
+        storeSessionsOnShutdown();
+        cancelAllTasks();
+        if (system != null) system.disable();
+
+        logger.info(Locale.getStringNullSafe(locale, PluginLang.DISABLED));
+    }
+
+    private void storeSessionsOnShutdown() {
         if (serverShutdownSave != null) {
-            serverShutdownSave.performSave();
+            Optional<Future<?>> complete = serverShutdownSave.performSave();
+            if (complete.isPresent()) {
+                try {
+                    complete.get().get(4, TimeUnit.SECONDS); // wait for completion for 4s
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException e) {
+                    logger.error("Failed to save sessions to database on shutdown: " + e.getCause().getMessage());
+                } catch (TimeoutException e) {
+                    logger.info(Locale.getStringNullSafe(locale, PluginLang.DISABLED_UNSAVED_SESSIONS_TIMEOUT));
+                }
+            }
         }
-        if (system != null) {
-            system.disable();
+    }
+
+    public void cancelAllTasks() {
+        runnableFactory.cancelAllKnownTasks();
+        Optional.ofNullable(Server.getInstance().getScheduler()).ifPresent(scheduler -> scheduler.cancelTask(this));
+    }
+
+    @Override
+    public boolean onCommand(CommandSender actualSender, Command actualCommand, String label, String[] args) {
+        String name = actualCommand.getName();
+        Subcommand command = commands.get(name);
+        if (command == null) return false;
+
+        CMDSender sender;
+        if (actualSender instanceof Player) {
+            sender = new NukkitPlayerCMDSender((Player) actualSender);
+        } else {
+            sender = new NukkitCMDSender(actualSender);
         }
 
-        logger.info(locale != null ? locale.getString(PluginLang.DISABLED) : PluginLang.DISABLED.getDefault());
+        runnableFactory.create(() -> {
+            try {
+                command.getExecutor().accept(sender, new Arguments(args));
+            } catch (Exception e) {
+                system.getErrorLogger().error(e, ErrorContext.builder()
+                        .related(sender.getClass())
+                        .related(label + " " + Arrays.toString(args))
+                        .build());
+            }
+        }).runTaskAsynchronously();
+        return true;
     }
 
     @Override
-    public String getVersion() {
-        return getDescription().getVersion();
-    }
-
-    @Override
-    public void onReload() {
-        // Nothing to be done, systems are disabled
-    }
-
-    @Override
-    public boolean isReloading() {
-        return reloading;
+    public void registerCommand(Subcommand command) {
+        if (command == null) {
+            logger.warn("Attempted to register a null command!");
+            return;
+        }
+        for (String name : command.getAliases()) {
+            commands.put(name, command);
+        }
     }
 
     @Override
@@ -121,14 +185,11 @@ public class PlanNukkit extends NukkitPlugin implements PlanPlugin {
 
     private void registerPlaceholderAPI(NukkitPlaceholderRegistrar placeholders) {
         if (this.getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            runnableFactory.create("Placeholders Registrar", new AbsRunnable() {
-                @Override
-                public void run() {
-                    try {
-                        placeholders.register();
-                    } catch (Exception | NoClassDefFoundError | NoSuchMethodError failed) {
-                        logger.warn("Failed to register PlaceholderAPI placeholders: " + failed.toString());
-                    }
+            runnableFactory.create(() -> {
+                try {
+                    placeholders.register();
+                } catch (Exception | NoClassDefFoundError | NoSuchMethodError failed) {
+                    logger.warn("Failed to register PlaceholderAPI placeholders: " + failed.toString());
                 }
             }).runTask();
         }

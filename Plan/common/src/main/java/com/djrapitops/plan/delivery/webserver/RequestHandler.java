@@ -22,67 +22,72 @@ import com.djrapitops.plan.delivery.web.resolver.request.Request;
 import com.djrapitops.plan.delivery.web.resolver.request.URIPath;
 import com.djrapitops.plan.delivery.web.resolver.request.URIQuery;
 import com.djrapitops.plan.delivery.web.resolver.request.WebUser;
-import com.djrapitops.plan.delivery.webserver.auth.Authentication;
-import com.djrapitops.plan.delivery.webserver.auth.BasicAuthentication;
-import com.djrapitops.plan.delivery.webserver.auth.CookieAuthentication;
-import com.djrapitops.plan.delivery.webserver.auth.FailReason;
+import com.djrapitops.plan.delivery.webserver.auth.*;
 import com.djrapitops.plan.exceptions.WebUserAuthException;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.PluginSettings;
 import com.djrapitops.plan.settings.config.paths.WebserverSettings;
+import com.djrapitops.plan.settings.locale.Locale;
+import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.database.DBSystem;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
-import com.djrapitops.plugin.utilities.Verify;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import net.playeranalytics.plugin.server.PluginLogger;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * HttpHandler for WebServer request management.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class RequestHandler implements HttpHandler {
 
+    private final Locale locale;
     private final PlanConfig config;
     private final DBSystem dbSystem;
     private final Addresses addresses;
     private final ResponseResolver responseResolver;
     private final ResponseFactory responseFactory;
     private final PluginLogger logger;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
-    private PassBruteForceGuard bruteForceGuard;
+    private final ActiveCookieStore activeCookieStore;
+    private final PassBruteForceGuard bruteForceGuard;
+    private List<String> ipWhitelist = null;
+
+    private final AtomicBoolean warnedAboutXForwardedSecurityIssue = new AtomicBoolean(false);
 
     @Inject
     RequestHandler(
+            Locale locale,
             PlanConfig config,
             DBSystem dbSystem,
             Addresses addresses,
             ResponseResolver responseResolver,
             ResponseFactory responseFactory,
+            ActiveCookieStore activeCookieStore,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
+        this.locale = locale;
         this.config = config;
         this.dbSystem = dbSystem;
         this.addresses = addresses;
         this.responseResolver = responseResolver;
         this.responseFactory = responseFactory;
+        this.activeCookieStore = activeCookieStore;
         this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
 
         bruteForceGuard = new PassBruteForceGuard();
     }
@@ -94,12 +99,16 @@ public class RequestHandler implements HttpHandler {
             response.getHeaders().putIfAbsent("Access-Control-Allow-Origin", config.get(WebserverSettings.CORS_ALLOW_ORIGIN));
             response.getHeaders().putIfAbsent("Access-Control-Allow-Methods", "GET, OPTIONS");
             response.getHeaders().putIfAbsent("Access-Control-Allow-Credentials", "true");
+            response.getHeaders().putIfAbsent("X-Robots-Tag", "noindex, nofollow");
             ResponseSender sender = new ResponseSender(addresses, exchange, response);
             sender.send();
         } catch (Exception e) {
             if (config.isTrue(PluginSettings.DEV_MODE)) {
                 logger.warn("THIS ERROR IS ONLY LOGGED IN DEV MODE:");
-                errorHandler.log(L.WARN, this.getClass(), e);
+                errorLogger.warn(e, ErrorContext.builder()
+                        .whatToDo("THIS ERROR IS ONLY LOGGED IN DEV MODE")
+                        .related(exchange.getRequestMethod(), exchange.getRemoteAddress(), exchange.getRequestHeaders(), exchange.getResponseHeaders(), exchange.getRequestURI())
+                        .build());
             }
         } finally {
             exchange.close();
@@ -107,13 +116,21 @@ public class RequestHandler implements HttpHandler {
     }
 
     public Response getResponse(HttpExchange exchange) {
-        String accessor = exchange.getRemoteAddress().getAddress().getHostAddress();
+        if (ipWhitelist == null) {
+            ipWhitelist = config.isTrue(WebserverSettings.IP_WHITELIST)
+                    ? config.get(WebserverSettings.WHITELIST)
+                    : Collections.emptyList();
+        }
+        String accessor = getAccessorAddress(exchange);
         Request request = null;
         Response response;
         try {
             request = buildRequest(exchange);
             if (bruteForceGuard.shouldPreventRequest(accessor)) {
                 response = responseFactory.failedLoginAttempts403();
+            } else if (!ipWhitelist.isEmpty() && !ipWhitelist.contains(accessor)) {
+                response = responseFactory.ipWhitelist403(accessor);
+                logger.info(locale.getString(PluginLang.WEB_SERVER_NOTIFY_IP_WHITELIST_BLOCK, accessor, exchange.getRequestURI().toString()));
             } else {
                 response = responseResolver.getResponse(request);
             }
@@ -124,9 +141,10 @@ public class RequestHandler implements HttpHandler {
                 response = responseFactory.badRequest(failReason.getReason(), "/auth/login");
             } else {
                 String from = exchange.getRequestURI().toASCIIString();
+                String directTo = StringUtils.startsWithAny(from, "/auth/", "/login") ? "/login" : "/login?from=." + from;
                 response = Response.builder()
-                        .redirectTo(StringUtils.startsWithAny(from, "/auth/", "/login") ? "/login" : "/login?from=" + from)
-                        .setHeader("Set-Cookie", "auth=expired; Path=/; Max-Age=1")
+                        .redirectTo(directTo)
+                        .setHeader("Set-Cookie", "auth=expired; Path=/; Max-Age=1; SameSite=Lax; Secure;")
                         .build();
             }
         }
@@ -143,10 +161,32 @@ public class RequestHandler implements HttpHandler {
         return response;
     }
 
+    private String getAccessorAddress(HttpExchange exchange) {
+        if (config.isTrue(WebserverSettings.IP_WHITELIST_X_FORWARDED)) {
+            String header = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
+            if (header == null) {
+                warnAboutXForwardedForSecurityIssue();
+            } else {
+                return header;
+            }
+        }
+        return exchange.getRemoteAddress().getAddress().getHostAddress();
+    }
+
+    private void warnAboutXForwardedForSecurityIssue() {
+        if (!warnedAboutXForwardedSecurityIssue.get()) {
+            logger.warn("Security Vulnerability due to misconfiguration: X-Forwarded-For header was not present in a request & '" +
+                    WebserverSettings.IP_WHITELIST_X_FORWARDED.getPath() + "' is 'true'!");
+            logger.warn("This could mean non-reverse-proxy access is not blocked & someone can use IP Spoofing to bypass security!");
+            logger.warn("Make sure you can only access Plan panel from your reverse-proxy or disable this setting.");
+        }
+        warnedAboutXForwardedSecurityIssue.set(true);
+    }
+
     private Request buildRequest(HttpExchange exchange) {
         String requestMethod = exchange.getRequestMethod();
         URIPath path = new URIPath(exchange.getRequestURI().getPath());
-        URIQuery query = new URIQuery(exchange.getRequestURI().getQuery());
+        URIQuery query = new URIQuery(exchange.getRequestURI().getRawQuery());
         WebUser user = getWebUser(exchange);
         Map<String, String> headers = getRequestHeaders(exchange);
         return new Request(requestMethod, path, query, user, headers);
@@ -161,7 +201,7 @@ public class RequestHandler implements HttpHandler {
 
     private Map<String, String> getRequestHeaders(HttpExchange exchange) {
         Map<String, String> headers = new HashMap<>();
-        for (Map.Entry<String, List<String>> e : exchange.getResponseHeaders().entrySet()) {
+        for (Map.Entry<String, List<String>> e : exchange.getRequestHeaders().entrySet()) {
             List<String> value = e.getValue();
             headers.put(e.getKey(), new TextStringBuilder().appendWithSeparators(value, ";").build());
         }
@@ -180,13 +220,13 @@ public class RequestHandler implements HttpHandler {
                 String name = split[0];
                 String value = split[1];
                 if ("auth".equals(name)) {
-                    return Optional.of(new CookieAuthentication(value));
+                    return Optional.of(new CookieAuthentication(activeCookieStore, value));
                 }
             }
         }
 
         List<String> authorization = requestHeaders.get("Authorization");
-        if (Verify.isEmpty(authorization)) return Optional.empty();
+        if (authorization == null || authorization.isEmpty()) return Optional.empty();
 
         String authLine = authorization.get(0);
         if (StringUtils.contains(authLine, "Basic ")) {

@@ -19,24 +19,22 @@ package com.djrapitops.plan.identification;
 import com.djrapitops.plan.SubSystem;
 import com.djrapitops.plan.exceptions.EnableException;
 import com.djrapitops.plan.identification.properties.ServerProperties;
-import com.djrapitops.plugin.utilities.Verify;
 
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * SubSystem for managing Server information.
  * <p>
  * Most information is accessible via static methods.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class ServerInfo implements SubSystem {
 
     protected Server server;
     protected final ServerProperties serverProperties;
 
-    public ServerInfo(ServerProperties serverProperties) {
+    protected ServerInfo(ServerProperties serverProperties) {
         this.serverProperties = serverProperties;
     }
 
@@ -44,11 +42,11 @@ public abstract class ServerInfo implements SubSystem {
         return server;
     }
 
-    public UUID getServerUUID() {
+    public ServerUUID getServerUUID() {
         return getServer().getUuid();
     }
 
-    public Optional<UUID> getServerUUIDSafe() {
+    public Optional<ServerUUID> getServerUUIDSafe() {
         return Optional.ofNullable(server).map(Server::getUuid);
     }
 
@@ -57,19 +55,19 @@ public abstract class ServerInfo implements SubSystem {
     }
 
     @Override
-    public void enable() throws EnableException {
+    public void enable() {
         loadServerInfo();
-        Verify.nullCheck(server, () -> new EnableException("Server information did not load!"));
+        if (server == null) throw new EnableException("Server information did not load!");
     }
 
-    protected abstract void loadServerInfo() throws EnableException;
+    protected abstract void loadServerInfo();
 
     @Override
     public void disable() {
 
     }
 
-    protected UUID generateNewUUID() {
-        return UUID.randomUUID();
+    protected ServerUUID generateNewUUID() {
+        return ServerUUID.randomUUID();
     }
 }

@@ -32,6 +32,7 @@ import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.file.PlanFiles;
 import com.djrapitops.plan.storage.file.Resource;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -43,7 +44,7 @@ import java.util.Optional;
 /**
  * Handles exporting of /network page html, data and resources.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class NetworkPageExporter extends FileExporter {
@@ -94,13 +95,19 @@ public class NetworkPageExporter extends FileExporter {
                 .resolve("index.html");
 
         Page page = pageFactory.networkPage();
-        export(to, exportPaths.resolveExportPaths(page.toHtml()));
+
+        // Fixes refreshingJsonRequest ignoring old data of export
+        String html = StringUtils.replaceEach(page.toHtml(),
+                new String[]{"loadPlayersOnlineGraph, 'network-overview', true);"},
+                new String[]{"loadPlayersOnlineGraph, 'network-overview');"});
+
+        export(to, exportPaths.resolveExportPaths(html));
     }
 
     /**
      * Perform export for a network page json payload.
      *
-     * @param exportPaths
+     * @param exportPaths Replacement store for player file paths.
      * @param toDirectory Path to Export directory
      * @param server      Server to export as Network page, {@link Server#isProxy()} assumed true.
      * @throws IOException       If a template can not be read from jar/disk or the result written
@@ -116,7 +123,9 @@ public class NetworkPageExporter extends FileExporter {
                 "network/playerbaseOverview",
                 "graph?type=playersOnline&server=" + serverUUID,
                 "graph?type=uniqueAndNew",
+                "graph?type=hourlyUniqueAndNew",
                 "graph?type=serverPie",
+                "graph?type=joinAddressPie",
                 "graph?type=activity",
                 "graph?type=geolocation",
                 "graph?type=uniqueAndNew",
@@ -143,8 +152,8 @@ public class NetworkPageExporter extends FileExporter {
         export(toDirectory.resolve("data").resolve(jsonResourceName),
                 // Replace ../player in urls to fix player page links
                 StringUtils.replaceEach(found.get().getAsString(),
-                        new String[]{"../player", "./player"},
-                        new String[]{relativePlayerLink, relativePlayerLink}
+                        new String[]{StringEscapeUtils.escapeJson("../player"), StringEscapeUtils.escapeJson("./player")},
+                        new String[]{StringEscapeUtils.escapeJson(relativePlayerLink), StringEscapeUtils.escapeJson(relativePlayerLink)}
                 )
         );
         exportPaths.put("./v1/" + resource, toRelativePathFromRoot("data/" + jsonResourceName));
@@ -168,16 +177,15 @@ public class NetworkPageExporter extends FileExporter {
                 "./img/Flaticon_circle.png",
                 "./css/sb-admin-2.css",
                 "./css/style.css",
-                "./vendor/jquery/jquery.min.js",
-                "./vendor/bootstrap/js/bootstrap.bundle.min.js",
-                "./vendor/datatables/jquery.dataTables.min.js",
-                "./vendor/datatables/dataTables.bootstrap4.min.js",
+                "./vendor/datatables/datatables.min.js",
+                "./vendor/datatables/datatables.min.css",
                 "./vendor/highcharts/highstock.js",
                 "./vendor/highcharts/map.js",
                 "./vendor/highcharts/world.js",
                 "./vendor/highcharts/drilldown.js",
                 "./vendor/highcharts/highcharts-more.js",
                 "./vendor/highcharts/no-data-to-display.js",
+                "./vendor/masonry/masonry.pkgd.min.js",
                 "./vendor/fontawesome-free/css/all.min.css",
                 "./vendor/fontawesome-free/webfonts/fa-brands-400.eot",
                 "./vendor/fontawesome-free/webfonts/fa-brands-400.ttf",
@@ -191,6 +199,7 @@ public class NetworkPageExporter extends FileExporter {
                 "./vendor/fontawesome-free/webfonts/fa-solid-900.ttf",
                 "./vendor/fontawesome-free/webfonts/fa-solid-900.woff",
                 "./vendor/fontawesome-free/webfonts/fa-solid-900.woff2",
+                "./js/domUtils.js",
                 "./js/sb-admin-2.js",
                 "./js/xmlhttprequests.js",
                 "./js/color-selector.js",
@@ -214,7 +223,7 @@ public class NetworkPageExporter extends FileExporter {
                 () -> files.getResourceFromJar("web/" + resourceName).asWebResource());
         Path to = toDirectory.resolve(resourceName);
 
-        if (resourceName.endsWith(".css")) {
+        if (resourceName.endsWith(".css") || resourceName.endsWith("color-selector.js")) {
             export(to, theme.replaceThemeColors(resource.asString()));
         } else if ("js/network-values.js".equalsIgnoreCase(resourceName) || "js/sessionAccordion.js".equalsIgnoreCase(resourceName)) {
             String relativePlayerLink = toRelativePathFromRoot("player");

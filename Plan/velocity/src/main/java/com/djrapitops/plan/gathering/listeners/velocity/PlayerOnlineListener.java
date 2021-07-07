@@ -16,14 +16,13 @@
  */
 package com.djrapitops.plan.gathering.listeners.velocity;
 
-import com.djrapitops.plan.delivery.domain.keys.SessionKeys;
+import com.djrapitops.plan.delivery.domain.PlayerName;
+import com.djrapitops.plan.delivery.domain.ServerName;
 import com.djrapitops.plan.delivery.export.Exporter;
-import com.djrapitops.plan.delivery.webserver.cache.DataID;
-import com.djrapitops.plan.delivery.webserver.cache.JSONCache;
 import com.djrapitops.plan.extension.CallEvents;
 import com.djrapitops.plan.extension.ExtensionSvc;
 import com.djrapitops.plan.gathering.cache.SessionCache;
-import com.djrapitops.plan.gathering.domain.Session;
+import com.djrapitops.plan.gathering.domain.ActiveSession;
 import com.djrapitops.plan.gathering.geolocation.GeolocationCache;
 import com.djrapitops.plan.identification.ServerInfo;
 import com.djrapitops.plan.processing.Processing;
@@ -34,8 +33,8 @@ import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.transactions.events.GeoInfoStoreTransaction;
 import com.djrapitops.plan.storage.database.transactions.events.PlayerRegisterTransaction;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
@@ -66,7 +65,7 @@ public class PlayerOnlineListener {
     private final GeolocationCache geolocationCache;
     private final SessionCache sessionCache;
     private final ServerInfo serverInfo;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     @Inject
     public PlayerOnlineListener(
@@ -74,10 +73,11 @@ public class PlayerOnlineListener {
             Processing processing,
             DBSystem dbSystem,
             ExtensionSvc extensionService,
-            Exporter exporter, GeolocationCache geolocationCache,
+            Exporter exporter,
+            GeolocationCache geolocationCache,
             SessionCache sessionCache,
             ServerInfo serverInfo,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.config = config;
         this.processing = processing;
@@ -87,7 +87,7 @@ public class PlayerOnlineListener {
         this.geolocationCache = geolocationCache;
         this.sessionCache = sessionCache;
         this.serverInfo = serverInfo;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     @Subscribe(order = PostOrder.LAST)
@@ -95,7 +95,7 @@ public class PlayerOnlineListener {
         try {
             actOnLogin(event);
         } catch (Exception e) {
-            errorHandler.log(L.WARN, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder().related(event).build());
         }
     }
 
@@ -106,9 +106,9 @@ public class PlayerOnlineListener {
         InetAddress address = player.getRemoteAddress().getAddress();
         long time = System.currentTimeMillis();
 
-        Session session = new Session(playerUUID, serverInfo.getServerUUID(), time, null, null);
-        session.putRawData(SessionKeys.NAME, playerName);
-        session.putRawData(SessionKeys.SERVER_NAME, "Proxy Server");
+        ActiveSession session = new ActiveSession(playerUUID, serverInfo.getServerUUID(), time, null, null);
+        session.getExtraData().put(PlayerName.class, new PlayerName(playerName));
+        session.getExtraData().put(ServerName.class, new ServerName("Proxy Server"));
         sessionCache.cacheSession(playerUUID, session);
 
         Database database = dbSystem.getDatabase();
@@ -125,12 +125,6 @@ public class PlayerOnlineListener {
         if (config.isTrue(ExportSettings.EXPORT_ON_ONLINE_STATUS_CHANGE)) {
             processing.submitNonCritical(() -> exporter.exportPlayerPage(playerUUID, playerName));
         }
-
-        UUID serverUUID = serverInfo.getServerUUID();
-        JSONCache.invalidateMatching(DataID.SERVER_OVERVIEW);
-        JSONCache.invalidate(DataID.GRAPH_ONLINE, serverUUID);
-        JSONCache.invalidate(DataID.SERVERS);
-        JSONCache.invalidate(DataID.SESSIONS);
     }
 
     @Subscribe(order = PostOrder.NORMAL)
@@ -146,7 +140,7 @@ public class PlayerOnlineListener {
         try {
             actOnLogout(event);
         } catch (Exception e) {
-            errorHandler.log(L.WARN, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder().related(event).build());
         }
     }
 
@@ -159,24 +153,6 @@ public class PlayerOnlineListener {
         if (config.isTrue(ExportSettings.EXPORT_ON_ONLINE_STATUS_CHANGE)) {
             processing.submitNonCritical(() -> exporter.exportPlayerPage(playerUUID, playerName));
         }
-
-        processing.submit(() -> {
-            JSONCache.invalidateMatching(
-                    DataID.SERVER_OVERVIEW,
-                    DataID.SESSIONS,
-                    DataID.GRAPH_WORLD_PIE,
-                    DataID.GRAPH_PUNCHCARD,
-                    DataID.KILLS,
-                    DataID.ONLINE_OVERVIEW,
-                    DataID.SESSIONS_OVERVIEW,
-                    DataID.PVP_PVE,
-                    DataID.GRAPH_UNIQUE_NEW,
-                    DataID.GRAPH_CALENDAR
-            );
-            UUID serverUUID = serverInfo.getServerUUID();
-            JSONCache.invalidate(DataID.GRAPH_ONLINE, serverUUID);
-            JSONCache.invalidate(DataID.SERVERS);
-        });
     }
 
     @Subscribe(order = PostOrder.LAST)
@@ -184,7 +160,7 @@ public class PlayerOnlineListener {
         try {
             actOnServerSwitch(event);
         } catch (Exception e) {
-            errorHandler.log(L.WARN, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder().related(event).build());
         }
     }
 
@@ -195,15 +171,13 @@ public class PlayerOnlineListener {
         long time = System.currentTimeMillis();
 
         // Replaces the current session in the cache.
-        Session session = new Session(playerUUID, serverInfo.getServerUUID(), time, null, null);
-        session.putRawData(SessionKeys.NAME, playerName);
-        session.putRawData(SessionKeys.SERVER_NAME, "Proxy Server");
+        ActiveSession session = new ActiveSession(playerUUID, serverInfo.getServerUUID(), time, null, null);
+        session.getExtraData().put(PlayerName.class, new PlayerName(playerName));
+        session.getExtraData().put(ServerName.class, new ServerName("Proxy Server"));
         sessionCache.cacheSession(playerUUID, session);
 
         if (config.isTrue(ExportSettings.EXPORT_ON_ONLINE_STATUS_CHANGE)) {
             processing.submitNonCritical(() -> exporter.exportPlayerPage(playerUUID, playerName));
         }
-
-        JSONCache.invalidate(DataID.SERVERS);
     }
 }

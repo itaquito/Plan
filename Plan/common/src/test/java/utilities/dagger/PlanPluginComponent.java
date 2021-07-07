@@ -19,39 +19,52 @@ package utilities.dagger;
 import com.djrapitops.plan.PlanPlugin;
 import com.djrapitops.plan.PlanSystem;
 import com.djrapitops.plan.commands.PlanCommand;
-import com.djrapitops.plan.modules.APFModule;
+import com.djrapitops.plan.modules.FiltersModule;
 import com.djrapitops.plan.modules.PlaceholderModule;
-import com.djrapitops.plan.modules.SystemObjectProvidingModule;
+import com.djrapitops.plan.modules.PlatformAbstractionLayerModule;
+import com.djrapitops.plan.utilities.logging.PluginErrorLogger;
 import dagger.BindsInstance;
 import dagger.Component;
+import net.playeranalytics.plugin.PlatformAbstractionLayer;
 
+import javax.inject.Named;
 import javax.inject.Singleton;
+import java.nio.file.Path;
 
 /**
  * Dagger component for {@link com.djrapitops.plan.PlanPlugin} based Plan system.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 @Component(modules = {
         PlanPluginModule.class,
-        SystemObjectProvidingModule.class,
-        APFModule.class,
+        TestSystemObjectProvidingModule.class,
+        PlatformAbstractionLayerModule.class,
+        FiltersModule.class,
         PlaceholderModule.class,
 
         PluginServerPropertiesModule.class,
-        PluginSuperClassBindingModule.class
+        PluginSuperClassBindingModule.class,
+        DBSystemModule.class
 })
 public interface PlanPluginComponent {
     PlanCommand planCommand();
 
     PlanSystem system();
 
+    PluginErrorLogger pluginErrorLogger();
+
     @Component.Builder
     interface Builder {
+        @BindsInstance
+        Builder bindTemporaryDirectory(@Named("tempDir") Path tempDir);
 
         @BindsInstance
         Builder plan(PlanPlugin plan);
+
+        @BindsInstance
+        Builder abstractionLayer(PlatformAbstractionLayer plan);
 
         PlanPluginComponent build();
     }

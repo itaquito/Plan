@@ -23,8 +23,6 @@ import com.djrapitops.plan.delivery.web.ResolverSvc;
 import com.djrapitops.plan.delivery.web.ResourceSvc;
 import com.djrapitops.plan.delivery.webserver.NonProxyWebserverDisableChecker;
 import com.djrapitops.plan.delivery.webserver.WebServerSystem;
-import com.djrapitops.plan.exceptions.EnableException;
-import com.djrapitops.plan.extension.ExtensionService;
 import com.djrapitops.plan.extension.ExtensionSvc;
 import com.djrapitops.plan.gathering.cache.CacheSystem;
 import com.djrapitops.plan.gathering.importing.ImportSystem;
@@ -33,16 +31,16 @@ import com.djrapitops.plan.identification.ServerInfo;
 import com.djrapitops.plan.processing.Processing;
 import com.djrapitops.plan.query.QuerySvc;
 import com.djrapitops.plan.settings.ConfigSystem;
+import com.djrapitops.plan.settings.ListenerSvc;
+import com.djrapitops.plan.settings.SchedulerSvc;
 import com.djrapitops.plan.settings.SettingsSvc;
 import com.djrapitops.plan.settings.locale.LocaleSystem;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.file.PlanFiles;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 import com.djrapitops.plan.version.VersionChecker;
-import com.djrapitops.plugin.benchmarking.Benchmark;
-import com.djrapitops.plugin.benchmarking.Timings;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -52,7 +50,7 @@ import javax.inject.Singleton;
  * <p>
  * This is an abstraction layer on top of Plugin instances so that tests can be run with less mocks.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class PlanSystem implements SubSystem {
@@ -79,10 +77,11 @@ public class PlanSystem implements SubSystem {
     private final ResourceSvc resourceService;
     private final ExtensionSvc extensionService;
     private final QuerySvc queryService;
+    private final ListenerSvc listenerService;
     private final SettingsSvc settingsService;
+    private final SchedulerSvc schedulerService;
     private final PluginLogger logger;
-    private final Timings timings;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     @Inject
     public PlanSystem(
@@ -104,10 +103,11 @@ public class PlanSystem implements SubSystem {
             ResourceSvc resourceService,
             ExtensionSvc extensionService,
             QuerySvc queryService,
+            ListenerSvc listenerService,
             SettingsSvc settingsService,
+            SchedulerSvc schedulerService,
             PluginLogger logger,
-            Timings timings,
-            ErrorHandler errorHandler,
+            ErrorLogger errorLogger,
             PlanAPI.PlanAPIHolder apiHolder
     ) {
         this.files = files;
@@ -128,19 +128,18 @@ public class PlanSystem implements SubSystem {
         this.resourceService = resourceService;
         this.extensionService = extensionService;
         this.queryService = queryService;
+        this.listenerService = listenerService;
         this.settingsService = settingsService;
+        this.schedulerService = schedulerService;
         this.logger = logger;
-        this.timings = timings;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
 
-        logger.log(L.INFO_COLOR,
-                "",
-                "§2           ██▌",
-                "§2     ██▌   ██▌",
-                "§2  ██▌██▌██▌██▌  §2Player Analytics",
-                "§2  ██▌██▌██▌██▌  §fv" + versionChecker.getCurrentVersion(),
-                ""
-        );
+        logger.info("");
+        logger.info("§2           ██▌");
+        logger.info("§2     ██▌   ██▌");
+        logger.info("§2  ██▌██▌██▌██▌  §2Player Analytics");
+        logger.info("§2  ██▌██▌██▌██▌  §fv" + versionChecker.getCurrentVersion());
+        logger.info("");
     }
 
     @Deprecated
@@ -149,11 +148,13 @@ public class PlanSystem implements SubSystem {
     }
 
     @Override
-    public void enable() throws EnableException {
+    public void enable() {
         extensionService.register();
         resolverService.register();
         resourceService.register();
+        listenerService.register();
         settingsService.register();
+        schedulerService.register();
         queryService.register();
 
         enableSystems(
@@ -175,7 +176,7 @@ public class PlanSystem implements SubSystem {
         // Disables Webserver if Proxy is detected in the database
         if (serverInfo.getServer().isNotProxy()) {
             processing.submitNonCritical(new NonProxyWebserverDisableChecker(
-                    configSystem.getConfig(), webServerSystem.getAddresses(), webServerSystem, logger, errorHandler
+                    configSystem.getConfig(), webServerSystem.getAddresses(), webServerSystem, logger, errorLogger
             ));
         }
 
@@ -183,15 +184,9 @@ public class PlanSystem implements SubSystem {
         enabled = true;
     }
 
-    private void enableSystems(SubSystem... systems) throws EnableException {
+    private void enableSystems(SubSystem... systems) {
         for (SubSystem system : systems) {
-            logger.debug("Enabling: " + system.getClass().getSimpleName());
-            timings.start("subsystem-enable");
             system.enable();
-            timings.end("subsystem-enable")
-                    .map(Benchmark::toDurationString)
-                    .map(duration -> "Took " + duration)
-                    .ifPresent(logger::debug);
         }
     }
 
@@ -222,7 +217,7 @@ public class PlanSystem implements SubSystem {
                     system.disable();
                 }
             } catch (Exception e) {
-                errorHandler.log(L.WARN, this.getClass(), e);
+                errorLogger.warn(e, ErrorContext.builder().related("Disabling PlanSystem: " + system).build());
             }
         }
     }
@@ -289,7 +284,18 @@ public class PlanSystem implements SubSystem {
         return enabled;
     }
 
-    public ExtensionService getExtensionService() {
+    public ExtensionSvc getExtensionService() {
         return extensionService;
+    }
+
+    /**
+     * Originally visible for testing purposes.
+     *
+     * @return the error logger of the system
+     * @deprecated A smell, dagger should be used to construct things instead.
+     */
+    @Deprecated
+    public ErrorLogger getErrorLogger() {
+        return errorLogger;
     }
 }

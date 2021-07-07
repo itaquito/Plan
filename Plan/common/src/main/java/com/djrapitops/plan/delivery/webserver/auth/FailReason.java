@@ -21,7 +21,7 @@ import com.djrapitops.plan.settings.locale.lang.Lang;
 /**
  * Reason for WebUserAuthException.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  * @see com.djrapitops.plan.exceptions.WebUserAuthException
  */
 public enum FailReason implements Lang {
@@ -29,6 +29,7 @@ public enum FailReason implements Lang {
     EXPIRED_COOKIE("User cookie has expired"),
     USER_AND_PASS_NOT_SPECIFIED("User and Password not specified"),
     USER_DOES_NOT_EXIST("User does not exist"),
+    USER_INFORMATION_NOT_FOUND("Registration failed, try again (The code expires after 15 minutes)"),
     USER_PASS_MISMATCH("User and Password did not match"),
     DATABASE_NOT_OPEN("Database is not open, check db status with /plan info"),
     ERROR("Authentication failed due to error");

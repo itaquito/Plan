@@ -19,20 +19,20 @@ package com.djrapitops.plan.placeholder;
 import com.djrapitops.plan.delivery.formatting.Formatter;
 import com.djrapitops.plan.delivery.formatting.Formatters;
 import com.djrapitops.plan.identification.ServerInfo;
+import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.queries.objects.TPSQueries;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.UUID;
 
 import static com.djrapitops.plan.utilities.MiscUtils.*;
 
 /**
  * Placeholders about a servers.
  *
- * @author aidn5, Rsl1122
+ * @author aidn5, AuroraLS3
  */
 @Singleton
 public class ServerPlaceHolders implements Placeholders {
@@ -60,7 +60,7 @@ public class ServerPlaceHolders implements Placeholders {
         Formatter<Double> percentage = formatters.percentage();
 
         Database database = dbSystem.getDatabase();
-        UUID serverUUID = serverInfo.getServerUUID();
+        ServerUUID serverUUID = serverInfo.getServerUUID();
 
         placeholders.registerStatic("server_tps_day",
                 () -> decimals.apply(database.query(TPSQueries.averageTPS(dayAgo(), now(), serverUUID))));
@@ -81,13 +81,13 @@ public class ServerPlaceHolders implements Placeholders {
                 () -> percentage.apply(database.query(TPSQueries.averageCPU(monthAgo(), now(), serverUUID))));
 
         placeholders.registerStatic("server_ram_day",
-                () -> database.query(TPSQueries.averageRAM(dayAgo(), now(), serverUUID)) + " MB");
+                () -> formatters.byteSizeLong().apply(database.query(TPSQueries.averageRAM(dayAgo(), now(), serverUUID))));
 
         placeholders.registerStatic("server_ram_week",
-                () -> database.query(TPSQueries.averageRAM(weekAgo(), now(), serverUUID)) + " MB");
+                () -> formatters.byteSizeLong().apply(database.query(TPSQueries.averageRAM(weekAgo(), now(), serverUUID))));
 
         placeholders.registerStatic("server_ram_month",
-                () -> database.query(TPSQueries.averageRAM(monthAgo(), now(), serverUUID)) + " MB");
+                () -> formatters.byteSizeLong().apply(database.query(TPSQueries.averageRAM(monthAgo(), now(), serverUUID))));
 
         placeholders.registerStatic("server_chunks_day",
                 () -> database.query(TPSQueries.averageChunks(dayAgo(), now(), serverUUID)));

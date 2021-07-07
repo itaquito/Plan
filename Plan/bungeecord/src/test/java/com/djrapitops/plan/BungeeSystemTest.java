@@ -38,9 +38,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * Test for Bungee PlanSystem.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public class BungeeSystemTest {
+class BungeeSystemTest {
 
     private final int TEST_PORT_NUMBER = RandomData.randomInt(9005, 9500);
 

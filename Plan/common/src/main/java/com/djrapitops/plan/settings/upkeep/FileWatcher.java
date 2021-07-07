@@ -16,9 +16,8 @@
  */
 package com.djrapitops.plan.settings.upkeep;
 
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
-import com.djrapitops.plugin.utilities.Verify;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -32,11 +31,11 @@ import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;
 /**
  * Class for watching files for changes.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class FileWatcher extends Thread {
 
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     private volatile boolean running;
 
@@ -45,20 +44,22 @@ public class FileWatcher extends Thread {
 
     public FileWatcher(
             File folder,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
-        this(folder.toPath(), errorHandler);
+        this(folder.toPath(), errorLogger);
     }
 
     public FileWatcher(
             Path watchedPath,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
         this.running = false;
         this.watchedFiles = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-        Verify.isTrue(watchedPath.toFile().isDirectory(), () -> new IllegalArgumentException("Given File " + watchedPath.toString() + " was not a folder."));
+        if (!watchedPath.toFile().isDirectory()) {
+            throw new IllegalArgumentException("Given File " + watchedPath.toString() + " was not a folder.");
+        }
 
         this.watchedPath = watchedPath;
     }
@@ -75,7 +76,7 @@ public class FileWatcher extends Thread {
             watchedPath.register(watcher, ENTRY_MODIFY);
             runLoop(watcher);
         } catch (IOException e) {
-            errorHandler.log(L.ERROR, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder().build());
             interrupt();
         } catch (InterruptedException e) {
             interrupt();

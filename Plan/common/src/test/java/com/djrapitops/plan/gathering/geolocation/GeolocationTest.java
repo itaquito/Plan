@@ -20,7 +20,6 @@ import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.DataGatheringSettings;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.storage.file.PlanFiles;
-import com.djrapitops.plugin.logging.console.TestPluginLogger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import utilities.TestPluginLogger;
 import utilities.mocks.objects.TestRunnableFactory;
 
 import java.io.File;
@@ -45,7 +45,7 @@ import static org.mockito.Mockito.when;
 /**
  * Tests for Geolocation functionality.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  * @author Fuzzlemann
  */
 @ExtendWith(MockitoExtension.class)
@@ -67,9 +67,6 @@ class GeolocationTest {
         GeolocationTest.tempDir = tempDir;
         IP_STORE = GeolocationTest.tempDir.resolve("GeoLite2-Country.mmdb").toFile();
 
-        TEST_DATA.put("8.8.8.8", "United States"); // California, US
-        TEST_DATA.put("8.8.4.4", "United States"); // California, US
-        TEST_DATA.put("4.4.2.2", "United States"); // Colorado, US
         TEST_DATA.put("156.53.159.86", "United States"); // Oregon, US
         TEST_DATA.put("208.67.222.222", "United States"); // California, US
         TEST_DATA.put("208.67.220.220", "United States"); // California, US
@@ -89,7 +86,7 @@ class GeolocationTest {
         assertTrue(config.isTrue(DataGatheringSettings.GEOLOCATIONS));
 
         GeoLite2Geolocator geoLite2Geolocator = new GeoLite2Geolocator(files, config);
-        underTest = new GeolocationCache(new Locale(), config, geoLite2Geolocator, new IP2CGeolocator(), new TestPluginLogger(), TestRunnableFactory.forSameThread());
+        underTest = new GeolocationCache(new Locale(), config, geoLite2Geolocator, new TestPluginLogger(), TestRunnableFactory.forSameThread());
         underTest.enable();
 
         assertTrue(underTest.canGeolocate());

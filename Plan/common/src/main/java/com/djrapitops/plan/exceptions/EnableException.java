@@ -19,9 +19,9 @@ package com.djrapitops.plan.exceptions;
 /**
  * Thrown when something goes wrong with Plan initialization.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public class EnableException extends Exception {
+public class EnableException extends IllegalStateException {
 
     public EnableException(String message, Throwable cause) {
         super(message, cause);

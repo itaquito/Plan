@@ -21,11 +21,11 @@ import java.util.List;
 /**
  * PieChart with a Pie about each slice as well.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class PieWithDrilldown extends Pie {
 
-    public PieWithDrilldown(List<PieSlice> slices) {
+    protected PieWithDrilldown(List<PieSlice> slices) {
         super(slices);
     }
 

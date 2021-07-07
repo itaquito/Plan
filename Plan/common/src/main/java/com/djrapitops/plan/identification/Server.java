@@ -17,37 +17,41 @@
 package com.djrapitops.plan.identification;
 
 import java.util.Objects;
-import java.util.UUID;
+import java.util.Optional;
 
 /**
  * Represents a Server that is running Plan.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class Server implements Comparable<Server> {
-    private final UUID uuid;
-    private int id;
+    private final ServerUUID uuid;
+    private Integer id;
     private String name;
     private String webAddress;
-    private int maxPlayers;
+    private boolean proxy;
 
-    public Server(int id, UUID uuid, String name, String webAddress, int maxPlayers) {
+    public Server(ServerUUID uuid, String name, String webAddress) {
+        this(null, uuid, name, webAddress, false);
+    }
+
+    public Server(Integer id, ServerUUID uuid, String name, String webAddress, boolean proxy) {
         this.id = id;
         this.uuid = uuid;
         this.name = name;
         this.webAddress = webAddress;
-        this.maxPlayers = maxPlayers;
+        this.proxy = proxy;
     }
 
-    public int getId() {
-        return id;
+    public Optional<Integer> getId() {
+        return Optional.ofNullable(id);
     }
 
     public void setId(int id) {
         this.id = id;
     }
 
-    public UUID getUuid() {
+    public ServerUUID getUuid() {
         return uuid;
     }
 
@@ -55,8 +59,12 @@ public class Server implements Comparable<Server> {
         return name;
     }
 
-    public String getIdentifiableName() {
+    public static String getIdentifiableName(String name, int id) {
         return !"Plan".equalsIgnoreCase(name) ? name : "Server " + id;
+    }
+
+    public String getIdentifiableName() {
+        return getIdentifiableName(name, id);
     }
 
     public void setName(String name) {
@@ -69,10 +77,6 @@ public class Server implements Comparable<Server> {
 
     public void setWebAddress(String webAddress) {
         this.webAddress = webAddress;
-    }
-
-    public int getMaxPlayers() {
-        return maxPlayers;
     }
 
     @Override
@@ -97,7 +101,6 @@ public class Server implements Comparable<Server> {
                 ", id=" + id +
                 ", name='" + name + '\'' +
                 ", webAddress='" + webAddress + '\'' +
-                ", maxPlayers=" + maxPlayers +
                 '}';
     }
 
@@ -107,14 +110,15 @@ public class Server implements Comparable<Server> {
     }
 
     public boolean isProxy() {
-        return "BungeeCord".equals(name);
+        return proxy;
+    }
+
+    public void setProxy(boolean proxy) {
+        this.proxy = proxy;
     }
 
     public boolean isNotProxy() {
         return !isProxy();
     }
 
-    public void setMaxPlayers(int maxPlayers) {
-        this.maxPlayers = maxPlayers;
-    }
 }

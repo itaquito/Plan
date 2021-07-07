@@ -16,17 +16,15 @@
  */
 package com.djrapitops.plan.settings;
 
-import com.djrapitops.plan.exceptions.EnableException;
 import com.djrapitops.plan.settings.config.ConfigReader;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.changes.ConfigUpdater;
-import com.djrapitops.plan.settings.config.paths.DatabaseSettings;
 import com.djrapitops.plan.settings.config.paths.PluginSettings;
 import com.djrapitops.plan.settings.network.ServerSettingsManager;
 import com.djrapitops.plan.settings.theme.Theme;
 import com.djrapitops.plan.storage.file.PlanFiles;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -37,14 +35,13 @@ import java.io.IOException;
  * <p>
  * Bukkit and Bungee have different default config file inside the jar.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class NukkitConfigSystem extends ConfigSystem {
 
     private final ConfigUpdater configUpdater;
     private final ServerSettingsManager serverSettingsManager;
-    private boolean firstInstall;
 
     @Inject
     public NukkitConfigSystem(
@@ -54,16 +51,15 @@ public class NukkitConfigSystem extends ConfigSystem {
             ServerSettingsManager serverSettingsManager,
             Theme theme,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
-        super(files, config, theme, logger, errorHandler);
+        super(files, config, theme, logger, errorLogger);
         this.configUpdater = configUpdater;
         this.serverSettingsManager = serverSettingsManager;
     }
 
     @Override
-    public void enable() throws EnableException {
-        firstInstall = !files.getConfigFile().exists();
+    public void enable() {
         super.enable();
         if (config.isTrue(PluginSettings.PROXY_COPY_CONFIG)) {
             serverSettingsManager.enable();
@@ -81,11 +77,6 @@ public class NukkitConfigSystem extends ConfigSystem {
         configUpdater.applyConfigUpdate(config);
         try (ConfigReader reader = new ConfigReader(files.getResourceFromJar("config.yml").asInputStream())) {
             config.copyMissing(reader.read());
-        }
-        String dbType = config.get(DatabaseSettings.TYPE);
-        if ("sqlite".equalsIgnoreCase(dbType)) {
-            if (!firstInstall) logger.warn("'SQLite' is not supported on Nukkit, switching to 'H2'.");
-            config.set(DatabaseSettings.TYPE, "H2");
         }
     }
 }

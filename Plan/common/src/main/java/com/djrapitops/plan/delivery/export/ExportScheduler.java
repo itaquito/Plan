@@ -16,15 +16,14 @@
  */
 package com.djrapitops.plan.delivery.export;
 
-import com.djrapitops.plan.TaskSystem;
 import com.djrapitops.plan.identification.Server;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.ExportSettings;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.queries.objects.ServerQueries;
-import com.djrapitops.plugin.api.TimeAmount;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.scheduling.RunnableFactory;
+import net.playeranalytics.plugin.scheduling.TimeAmount;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -35,34 +34,31 @@ import java.util.concurrent.TimeUnit;
 /**
  * Schedules export tasks so that they are not all run at once.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class ExportScheduler {
 
     private final PlanConfig config;
     private final DBSystem dbSystem;
-    private final TaskSystem taskSystem;
 
+    private final RunnableFactory runnableFactory;
     private final Exporter exporter;
-    private final PluginLogger logger;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     @Inject
     public ExportScheduler(
             PlanConfig config,
             DBSystem dbSystem,
-            TaskSystem taskSystem,
+            RunnableFactory runnableFactory,
             Exporter exporter,
-            PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.config = config;
         this.dbSystem = dbSystem;
-        this.taskSystem = taskSystem;
+        this.runnableFactory = runnableFactory;
         this.exporter = exporter;
-        this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     public void scheduleExport() {
@@ -72,8 +68,8 @@ public class ExportScheduler {
 
     private void schedulePlayersPageExport() {
         long period = TimeAmount.toTicks(config.get(ExportSettings.EXPORT_PERIOD), TimeUnit.MILLISECONDS);
-        taskSystem.registerTask("Players page export",
-                new ExportTask(exporter, Exporter::exportPlayersPage, logger, errorHandler)
+        runnableFactory.create(
+                new ExportTask(exporter, Exporter::exportPlayersPage, errorLogger)
         ).runTaskTimerAsynchronously(0L, period);
     }
 
@@ -88,18 +84,18 @@ public class ExportScheduler {
         long offset = period / serverCount;
 
         Optional<Server> proxy = servers.stream().filter(Server::isProxy).findFirst();
-        proxy.ifPresent(mainServer -> taskSystem.registerTask("Network export",
-                new ExportTask(exporter, exporter -> exporter.exportServerPage(mainServer), logger, errorHandler))
+        proxy.ifPresent(mainServer -> runnableFactory.create(
+                new ExportTask(exporter, same -> same.exportServerPage(mainServer), errorLogger))
                 .runTaskTimerAsynchronously(0L, period)
         );
 
         int offsetMultiplier = proxy.isPresent() ? 1 : 0; // Delay first server export if on a network.
         for (Server server : servers) {
-            taskSystem.registerTask("Server export",
+            runnableFactory.create(
                     new ExportTask(exporter, same -> {
                         same.exportServerPage(server);
                         same.exportServerJSON(server);
-                    }, logger, errorHandler))
+                    }, errorLogger))
                     .runTaskTimerAsynchronously(offset * offsetMultiplier, period);
             offsetMultiplier++;
         }

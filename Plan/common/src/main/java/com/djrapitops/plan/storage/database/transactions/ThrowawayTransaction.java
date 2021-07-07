@@ -23,12 +23,12 @@ import com.djrapitops.plan.storage.database.Database;
  * <p>
  * This transaction type is for storing data that is not critical to be saved on plugin shutdown.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class ThrowawayTransaction extends Transaction {
 
     @Override
     protected boolean shouldBeExecuted() {
-        return getDBState() != Database.State.CLOSING;
+        return getDBState() != Database.State.CLOSING && dbIsNotUnderHeavyLoad();
     }
 }

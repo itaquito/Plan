@@ -29,7 +29,7 @@ import java.util.zip.GZIPOutputStream;
 /**
  * Utility for sending a Response to HttpExchange.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class ResponseSender {
 
@@ -45,10 +45,21 @@ public class ResponseSender {
 
     public void send() throws IOException {
         setResponseHeaders();
-        if ("bytes".equalsIgnoreCase(response.getHeaders().get("Accept-Ranges"))) {
+        if ("HEAD".equals(exchange.getRequestMethod()) || response.getCode() == 204) {
+            sendHeadResponse();
+        } else if ("bytes".equalsIgnoreCase(response.getHeaders().get("Accept-Ranges"))) {
             sendRawBytes();
         } else {
             sendCompressed();
+        }
+    }
+
+    public void sendHeadResponse() throws IOException {
+        try {
+            exchange.getResponseHeaders().remove("Content-Length");
+            beginSend();
+        } finally {
+            exchange.getRequestBody().close();
         }
     }
 
@@ -80,7 +91,13 @@ public class ResponseSender {
     }
 
     private void beginSend() throws IOException {
-        exchange.sendResponseHeaders(response.getCode(), 0);
+        String length = response.getHeaders().get("Content-Length");
+        if (length == null || "0".equals(length)) {
+            exchange.getResponseHeaders().remove("Content-Length");
+        }
+        // Return a content length of -1 for HTTP code 204 (No content)
+        // and HEAD requests to avoid warning messages.
+        exchange.sendResponseHeaders(response.getCode(), (response.getCode() == 204 || "HEAD".equals(exchange.getRequestMethod()) || length == null) ? -1 : Long.parseLong(length));
     }
 
     private void sendRawBytes() throws IOException {

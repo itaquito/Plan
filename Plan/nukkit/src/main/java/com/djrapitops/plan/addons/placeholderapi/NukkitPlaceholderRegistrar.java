@@ -18,19 +18,23 @@ package com.djrapitops.plan.addons.placeholderapi;
 
 import cn.nukkit.Player;
 import com.creeperface.nukkit.placeholderapi.api.PlaceholderAPI;
+import com.creeperface.nukkit.placeholderapi.api.PlaceholderParameters;
+import com.creeperface.nukkit.placeholderapi.api.PlaceholderParameters.Parameter;
 import com.djrapitops.plan.PlanSystem;
 import com.djrapitops.plan.delivery.domain.container.PlayerContainer;
 import com.djrapitops.plan.delivery.domain.keys.PlayerKeys;
 import com.djrapitops.plan.gathering.cache.SessionCache;
 import com.djrapitops.plan.placeholder.PlanPlaceholders;
 import com.djrapitops.plan.storage.database.queries.containers.ContainerFetchQueries;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.ArrayList;
+import java.io.Serializable;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Placeholder expansion used to provide data from Plan on Nukkit.
@@ -42,42 +46,53 @@ public class NukkitPlaceholderRegistrar {
 
     private final PlanPlaceholders placeholders;
     private final PlanSystem system;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     @Inject
     public NukkitPlaceholderRegistrar(
             PlanPlaceholders placeholders,
             PlanSystem system,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.placeholders = placeholders;
         this.system = system;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     public void register() {
         PlaceholderAPI api = PlaceholderAPI.getInstance();
-        placeholders.getPlaceholders().forEach((name, loader) ->
-                api.visitorSensitivePlaceholder(name, (player, params) -> {
-                            try {
-                                return loader.apply(getPlayer(player), new ArrayList<>(params.getAll().values()));
-                            } catch (Exception e) {
-                                errorHandler.log(L.WARN, getClass(), e);
-                                return null;
-                            }
-                        }
-                ));
+        placeholders.getPlaceholders().forEach((name, loader) -> api.builder(name, Serializable.class)
+                .visitorLoader(options -> {
+                    try {
+                        return loader.apply(
+                                getPlayer(options.getPlayer()),
+                                getPlaceholderParameterValues(options.getParameters())
+                        );
+                    } catch (Exception e) {
+                        errorLogger.warn(e, ErrorContext.builder().related("Registering PlaceholderAPI").build());
+                        return null;
+                    }
+                }).build()
+        );
 
-        placeholders.getStaticPlaceholders().forEach((name, loader) ->
-                api.staticPlaceholder(name, params -> {
-                            try {
-                                return loader.apply(new ArrayList<>(params.getAll().values()));
-                            } catch (Exception e) {
-                                errorHandler.log(L.WARN, getClass(), e);
-                                return null;
-                            }
-                        }
-                ));
+        placeholders.getStaticPlaceholders().forEach((name, loader) -> api.builder(name, Serializable.class)
+                .loader(options -> {
+                    try {
+                        return loader.apply(
+                                getPlaceholderParameterValues(options.getParameters())
+                        );
+                    } catch (Exception e) {
+                        errorLogger.warn(e, ErrorContext.builder().related("Registering PlaceholderAPI").build());
+                        return null;
+                    }
+                }).build()
+        );
+    }
+
+    private List<String> getPlaceholderParameterValues(PlaceholderParameters parameters) {
+        return parameters.getAll().stream()
+                .map(Parameter::getValue)
+                .collect(Collectors.toList());
     }
 
     private PlayerContainer getPlayer(Player player) {

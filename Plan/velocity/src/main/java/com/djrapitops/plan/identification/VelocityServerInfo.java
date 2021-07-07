@@ -18,98 +18,106 @@ package com.djrapitops.plan.identification;
 
 import com.djrapitops.plan.delivery.webserver.Addresses;
 import com.djrapitops.plan.exceptions.EnableException;
-import com.djrapitops.plan.exceptions.database.DBOpException;
 import com.djrapitops.plan.identification.properties.ServerProperties;
-import com.djrapitops.plan.storage.database.DBSystem;
-import com.djrapitops.plan.storage.database.Database;
-import com.djrapitops.plan.storage.database.queries.objects.ServerQueries;
-import com.djrapitops.plan.storage.database.transactions.StoreServerInformationTransaction;
-import com.djrapitops.plugin.logging.console.PluginLogger;
+import com.djrapitops.plan.identification.storage.ServerDBLoader;
+import com.djrapitops.plan.identification.storage.ServerFileLoader;
+import com.djrapitops.plan.identification.storage.ServerLoader;
+import com.djrapitops.plan.processing.Processing;
+import com.djrapitops.plan.settings.locale.Locale;
+import com.djrapitops.plan.settings.locale.lang.PluginLang;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 
 /**
- * Manages Server information on the Bungee instance.
+ * Manages Server information on the Velocity instance.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class VelocityServerInfo extends ServerInfo {
 
-    private final DBSystem dbSystem;
+    private final ServerLoader fromFile;
+    private final ServerLoader fromDatabase;
+
+    private final Processing processing;
     private final Addresses addresses;
+
+    private final Locale locale;
     private final PluginLogger logger;
 
     @Inject
     public VelocityServerInfo(
             ServerProperties serverProperties,
-            DBSystem dbSystem,
+            ServerFileLoader fromFile,
+            ServerDBLoader fromDatabase,
+            Processing processing,
             Addresses addresses,
+            Locale locale,
             PluginLogger logger
     ) {
         super(serverProperties);
-        this.dbSystem = dbSystem;
+        this.fromFile = fromFile;
+        this.fromDatabase = fromDatabase;
+        this.processing = processing;
         this.addresses = addresses;
+        this.locale = locale;
         this.logger = logger;
     }
 
     @Override
-    public void loadServerInfo() throws EnableException {
+    public void loadServerInfo() {
+        logger.info(locale.getString(PluginLang.LOADING_SERVER_INFO));
         checkIfDefaultIP();
 
-        try {
-            Database database = dbSystem.getDatabase();
-            Optional<Server> proxyInfo = database.query(ServerQueries.fetchProxyServerInformation());
-            if (proxyInfo.isPresent()) {
-                server = proxyInfo.get();
-                updateServerInfo();
-            } else {
-                server = registerVelocityInfo(database);
-            }
-        } catch (DBOpException | ExecutionException e) {
-            throw new EnableException("Failed to read Server information from Database.");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        this.server = fromFile.load(null).orElseGet(() -> fromDatabase.load(null)
+                .orElseGet(this::registerServer));
+        this.server.setProxy(true); // Ensure isProxy if loaded from file
+
+        processing.submitNonCritical(this::updateStorage);
     }
 
-    private void updateServerInfo() {
-        addresses.getAccessAddress().ifPresent(this::saveAddress);
+    private void updateStorage() {
+        String address = addresses.getAccessAddress().orElseGet(addresses::getFallbackLocalhostAddress);
+
+        server.setWebAddress(address);
+
+        fromDatabase.save(server);
+        server = fromDatabase.load(server.getUuid()).orElse(server);
+        fromFile.save(server);
     }
 
-    private void saveAddress(String accessAddress) {
-        if (!accessAddress.equals(server.getWebAddress())) {
-            server.setWebAddress(accessAddress);
-            dbSystem.getDatabase().executeTransaction(new StoreServerInformationTransaction(server));
-        }
-    }
-
-    private void checkIfDefaultIP() throws EnableException {
+    /**
+     * @throws EnableException
+     */
+    private void checkIfDefaultIP() {
         String ip = serverProperties.getIp();
         if ("0.0.0.0".equals(ip)) {
             logger.error("IP setting still 0.0.0.0 - Configure Alternative_IP/IP that connects to the Proxy server.");
-            logger.info("Player Analytics partially enabled (Use /planbungee to reload config)");
+            logger.info("Player Analytics partially enabled (Use /planproxy reload to reload config)");
             throw new EnableException("IP setting still 0.0.0.0 - Configure Alternative_IP/IP that connects to the Proxy server.");
         }
     }
 
-    private Server registerVelocityInfo(Database db) throws EnableException, ExecutionException, InterruptedException {
-        UUID serverUUID = generateNewUUID();
+    private Server registerServer() {
+        Server proxy = createServerObject();
+
+        fromDatabase.save(proxy);
+        Server stored = fromDatabase.load(null)
+                .orElseThrow(() -> new EnableException("Velocity registration failed (DB)"));
+
+        fromFile.save(stored);
+        return stored;
+    }
+
+    /**
+     * @throws EnableException
+     */
+    private Server createServerObject() {
+        ServerUUID serverUUID = generateNewUUID();
         String accessAddress = addresses.getAccessAddress().orElseThrow(() -> new EnableException("Velocity can not have '0.0.0.0' or '' as an address. Set up 'Server.IP' setting."));
 
-        // TODO Rework to allow Velocity as name.
-        Server proxy = new Server(-1, serverUUID, "BungeeCord", accessAddress, serverProperties.getMaxPlayers());
-        db.executeTransaction(new StoreServerInformationTransaction(proxy))
-                .get();
-
-        Optional<Server> proxyInfo = db.query(ServerQueries.fetchProxyServerInformation());
-        if (proxyInfo.isPresent()) {
-            return proxyInfo.get();
-        }
-        throw new EnableException("Velocity registration failed (DB)");
+        return new Server(-1, serverUUID, "Velocity", accessAddress, true);
     }
 }

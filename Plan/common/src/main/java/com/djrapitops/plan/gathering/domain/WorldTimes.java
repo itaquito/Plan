@@ -16,6 +16,8 @@
  */
 package com.djrapitops.plan.gathering.domain;
 
+import org.apache.commons.text.TextStringBuilder;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -24,7 +26,7 @@ import java.util.Optional;
 /**
  * Class that tracks the time spent in each World based on GMTimes.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class WorldTimes {
 
@@ -159,17 +161,11 @@ public class WorldTimes {
 
     @Override
     public String toString() {
-        StringBuilder b = new StringBuilder("WorldTimes (Current: " + currentWorld + "){\n");
-
-        for (Map.Entry<String, GMTimes> entry : times.entrySet()) {
-            GMTimes value = entry.getValue();
-            b.append("World '").append(entry.getKey()).append("':\n")
-                    .append("  Total: ").append(value.getTotal()).append("\n")
-                    .append("  ").append(value.toString()).append("\n");
-        }
-
-        b.append("}");
-        return b.toString();
+        return "WorldTimes{" +
+                "times=" + times +
+                ", currentWorld='" + currentWorld + '\'' +
+                ", currentGamemode='" + currentGamemode + '\'' +
+                '}';
     }
 
     public Optional<String> getCurrentWorld() {
@@ -191,5 +187,27 @@ public class WorldTimes {
 
     public boolean contains(String worldName) {
         return times.containsKey(worldName);
+    }
+
+    public boolean isEmpty() {
+        return getWorldTimes().isEmpty();
+    }
+
+    public void setAll(WorldTimes worldTimes) {
+        times.clear();
+        for (Map.Entry<String, GMTimes> entry : worldTimes.getWorldTimes().entrySet()) {
+            setGMTimesForWorld(entry.getKey(), entry.getValue());
+        }
+    }
+
+    public String toJson() {
+        return "{\"times\": {" +
+                new TextStringBuilder().appendWithSeparators(times.entrySet().stream()
+                        .map(entry -> "\"" + entry.getKey() + "\": " + entry.getValue().toJson())
+                        .iterator(), ",").build() +
+                "  }," +
+                (currentWorld != null ? "\"currentWorld\": \"" + currentWorld + "\"," : "\"currentWorld\": null,") +
+                (currentGamemode != null ? "\"currentGamemode\": \"" + currentGamemode + "\"" : "\"currentGamemode\": null") +
+                "}";
     }
 }

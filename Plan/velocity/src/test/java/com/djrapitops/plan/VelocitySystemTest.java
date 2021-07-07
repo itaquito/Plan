@@ -35,9 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Test for Velocity PlanSystem.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public class VelocitySystemTest {
+class VelocitySystemTest {
 
     private final int TEST_PORT_NUMBER = RandomData.randomInt(9005, 9500);
 

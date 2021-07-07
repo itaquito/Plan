@@ -19,28 +19,24 @@ package com.djrapitops.plan.delivery.export;
 import com.djrapitops.plan.exceptions.ExportException;
 import com.djrapitops.plan.exceptions.database.DBOpException;
 import com.djrapitops.plan.utilities.java.ThrowingConsumer;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
-import com.djrapitops.plugin.task.AbsRunnable;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.scheduling.PluginRunnable;
 
-public class ExportTask extends AbsRunnable {
+public class ExportTask extends PluginRunnable {
 
     private final Exporter exporter;
     private final ThrowingConsumer<Exporter, ExportException> exportAction;
-    private final PluginLogger logger;
-    private final ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     public ExportTask(
             Exporter exporter,
             ThrowingConsumer<Exporter, ExportException> exportAction,
-            PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.exporter = exporter;
         this.exportAction = exportAction;
-        this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     @Override
@@ -48,22 +44,26 @@ public class ExportTask extends AbsRunnable {
         try {
             exportAction.accept(exporter);
         } catch (ExportException e) {
-            errorHandler.log(L.WARN, this.getClass(), e);
+            errorLogger.warn(e, ErrorContext.builder().related(getClass()).build());
         } catch (DBOpException dbException) {
             handleDBException(dbException);
         } catch (Exception | NoClassDefFoundError | NoSuchMethodError | NoSuchFieldError e) {
-            logger.error("Export Task Disabled due to error, reload Plan to re-enable.");
-            errorHandler.log(L.ERROR, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder()
+                    .whatToDo("Export Task Disabled due to error - reload Plan to re-enable.")
+                    .related(getClass()).build());
             cancel();
         }
     }
 
     private void handleDBException(DBOpException dbException) {
-        logger.error("Export Task Disabled due to database error, reload Plan to re-enable.");
         if (dbException.getMessage().contains("closed")) {
-            logger.warn("(Error was caused by database closing, so this error can possibly be ignored.)");
+            errorLogger.error(dbException, ErrorContext.builder()
+                    .whatToDo("Export Task Disabled due to error - database is closing, so this error can be ignored.).")
+                    .related(getClass()).build());
         } else {
-            errorHandler.log(L.ERROR, this.getClass(), dbException);
+            errorLogger.error(dbException, ErrorContext.builder()
+                    .whatToDo("Export Task Disabled due to error - reload Plan to re-enable.")
+                    .related(getClass()).build());
         }
         cancel();
     }

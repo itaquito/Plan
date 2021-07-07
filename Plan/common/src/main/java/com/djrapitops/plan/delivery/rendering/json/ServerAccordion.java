@@ -26,17 +26,21 @@ import com.djrapitops.plan.delivery.formatting.Formatter;
 import com.djrapitops.plan.delivery.rendering.json.graphs.Graphs;
 import com.djrapitops.plan.delivery.rendering.json.graphs.pie.WorldPie;
 import com.djrapitops.plan.gathering.domain.WorldTimes;
+import com.djrapitops.plan.identification.ServerUUID;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Utility for creating JSON for Server Accordion
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class ServerAccordion {
 
-    private final Map<UUID, String> serverNames;
+    private final Map<ServerUUID, String> serverNames;
     private final PerServerContainer perServer;
     private final String unknown;
 
@@ -45,7 +49,7 @@ public class ServerAccordion {
     private final Formatter<Long> timeAmount;
 
     public ServerAccordion(
-            PlayerContainer container, Map<UUID, String> serverNames,
+            PlayerContainer container, Map<ServerUUID, String> serverNames,
             Graphs graphs,
             Formatter<Long> year,
             Formatter<Long> timeAmount,
@@ -64,20 +68,20 @@ public class ServerAccordion {
     public List<Map<String, Object>> asMaps() {
         List<Map<String, Object>> servers = new ArrayList<>();
 
-        for (Map.Entry<UUID, DataContainer> entry : perServer.entrySet()) {
-            UUID serverUUID = entry.getKey();
-            DataContainer perServer = entry.getValue();
+        for (Map.Entry<ServerUUID, DataContainer> entry : perServer.entrySet()) {
+            ServerUUID serverUUID = entry.getKey();
+            DataContainer ofServer = entry.getValue();
             Map<String, Object> server = new HashMap<>();
 
             String serverName = serverNames.getOrDefault(serverUUID, unknown);
-            WorldTimes worldTimes = perServer.getValue(PerServerKeys.WORLD_TIMES).orElse(new WorldTimes());
-            SessionsMutator sessionsMutator = SessionsMutator.forContainer(perServer);
+            WorldTimes worldTimes = ofServer.getValue(PerServerKeys.WORLD_TIMES).orElse(new WorldTimes());
+            SessionsMutator sessionsMutator = SessionsMutator.forContainer(ofServer);
 
             server.put("server_name", serverName);
 
-            server.put("banned", perServer.getValue(PerServerKeys.BANNED).orElse(false));
-            server.put("operator", perServer.getValue(PerServerKeys.OPERATOR).orElse(false));
-            server.put("registered", year.apply(perServer.getValue(PerServerKeys.REGISTERED).orElse(0L)));
+            server.put("banned", ofServer.getValue(PerServerKeys.BANNED).orElse(false));
+            server.put("operator", ofServer.getValue(PerServerKeys.OPERATOR).orElse(false));
+            server.put("registered", year.apply(ofServer.getValue(PerServerKeys.REGISTERED).orElse(0L)));
             server.put("last_seen", year.apply(sessionsMutator.toLastSeen()));
 
             server.put("session_count", sessionsMutator.count());

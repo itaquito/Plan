@@ -32,7 +32,7 @@ import static com.djrapitops.plan.storage.database.sql.building.Sql.*;
 /**
  * Transaction to store an Icon to the database.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class StoreIconTransaction extends ThrowawayTransaction {
 
@@ -44,7 +44,7 @@ public class StoreIconTransaction extends ThrowawayTransaction {
 
     @Override
     protected void performOperations() {
-        if (!query(isIconStored())) {
+        if (Boolean.FALSE.equals(query(isIconStored()))) {
             execute(insertIcon());
         }
     }

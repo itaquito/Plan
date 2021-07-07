@@ -17,7 +17,6 @@
 package com.djrapitops.plan;
 
 import com.djrapitops.plan.exceptions.EnableException;
-import com.djrapitops.plan.settings.ConfigSettingKeyTest;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.WebserverSettings;
 import com.djrapitops.plan.settings.config.paths.key.Setting;
@@ -25,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import utilities.RandomData;
+import utilities.TestSettings;
 import utilities.mocks.NukkitMockComponent;
 
 import java.nio.file.Path;
@@ -35,9 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Test for Nukkit PlanSystem.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public class NukkitSystemTest {
+class NukkitSystemTest {
 
     private final int TEST_PORT_NUMBER = RandomData.randomInt(9005, 9500);
     private PlanSystem system;
@@ -65,8 +65,8 @@ public class NukkitSystemTest {
             system.enable();
             PlanConfig config = system.getConfigSystem().getConfig();
 
-            Collection<Setting> serverSettings = ConfigSettingKeyTest.getServerSettings();
-            ConfigSettingKeyTest.assertValidDefaultValuesForAllSettings(config, serverSettings);
+            Collection<Setting> serverSettings = TestSettings.getServerSettings();
+            TestSettings.assertValidDefaultValuesForAllSettings(config, serverSettings);
         } finally {
             system.disable();
         }

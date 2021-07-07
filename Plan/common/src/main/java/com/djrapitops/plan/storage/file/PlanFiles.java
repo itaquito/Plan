@@ -16,12 +16,11 @@
  */
 package com.djrapitops.plan.storage.file;
 
-import com.djrapitops.plan.PlanPlugin;
 import com.djrapitops.plan.SubSystem;
 import com.djrapitops.plan.exceptions.EnableException;
-import com.djrapitops.plugin.utilities.Verify;
 
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.inject.Singleton;
 import java.io.File;
 import java.io.IOException;
@@ -33,20 +32,23 @@ import java.util.Optional;
 /**
  * Abstracts File methods of Plugin classes so that they can be tested without Mocks.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class PlanFiles implements SubSystem {
 
-    protected final PlanPlugin plugin;
+    protected final JarResource.StreamFunction getResourceStream;
 
     private final File dataFolder;
     private final File configFile;
 
     @Inject
-    public PlanFiles(PlanPlugin plugin) {
-        this.dataFolder = plugin.getDataFolder();
-        this.plugin = plugin;
+    public PlanFiles(
+            @Named("dataFolder") File dataFolder,
+            JarResource.StreamFunction getResourceStream
+    ) {
+        this.dataFolder = dataFolder;
+        this.getResourceStream = getResourceStream;
         this.configFile = getFileFromPluginFolder("config.yml");
     }
 
@@ -59,17 +61,22 @@ public class PlanFiles implements SubSystem {
     }
 
     public Path getCustomizationDirectory() {
-        return dataFolder.toPath().resolve("web");
+        return getDataDirectory().resolve("web");
     }
 
     public File getLogsFolder() {
         try {
             File folder = getFileFromPluginFolder("logs");
-            Files.createDirectories(folder.toPath());
+            Path dir = folder.toPath();
+            Files.createDirectories(dir);
             return folder;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    public Path getLogsDirectory() {
+        return getDataDirectory().resolve("logs");
     }
 
     public File getConfigFile() {
@@ -85,16 +92,15 @@ public class PlanFiles implements SubSystem {
     }
 
     @Override
-    public void enable() throws EnableException {
+    public void enable() {
         ResourceCache.invalidateAll();
         ResourceCache.cleanUp();
-        Verify.isTrue((dataFolder.exists() && dataFolder.isDirectory()) || dataFolder.mkdirs(),
-                () -> new EnableException("Could not create data folder at " + dataFolder.getAbsolutePath()));
         try {
-            Verify.isTrue((configFile.exists() && configFile.isFile()) || configFile.createNewFile(),
-                    () -> new EnableException("Could not create config file at " + configFile.getAbsolutePath()));
+            Path dir = getDataDirectory();
+            if (!Files.isSymbolicLink(dir)) Files.createDirectories(dir);
+            if (!configFile.exists()) Files.createFile(configFile.toPath());
         } catch (IOException e) {
-            throw new EnableException("Failed to create config.yml", e);
+            throw new EnableException("Failed to create config.yml, " + e.getMessage(), e);
         }
     }
 
@@ -110,7 +116,7 @@ public class PlanFiles implements SubSystem {
      * @return a {@link Resource} for accessing the resource.
      */
     public Resource getResourceFromJar(String resourceName) {
-        return new JarResource("assets/plan/" + resourceName, () -> plugin.getResource("assets/plan/" + resourceName));
+        return new JarResource("assets/plan/" + resourceName, getResourceStream);
     }
 
     /**
@@ -141,5 +147,9 @@ public class PlanFiles implements SubSystem {
             }
         }
         return Optional.empty();
+    }
+
+    public Path getJSONStorageDirectory() {
+        return getDataDirectory().resolve("cached_json");
     }
 }

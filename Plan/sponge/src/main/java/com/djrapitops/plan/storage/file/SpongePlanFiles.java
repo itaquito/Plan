@@ -20,19 +20,28 @@ import com.djrapitops.plan.PlanPlugin;
 import org.spongepowered.api.Sponge;
 
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.inject.Singleton;
+import java.io.File;
 
 /**
  * Implements jar resource fetching with Sponge Asset API.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class SpongePlanFiles extends PlanFiles {
 
+    private final PlanPlugin plugin;
+
     @Inject
-    public SpongePlanFiles(PlanPlugin plugin) {
-        super(plugin);
+    public SpongePlanFiles(
+            @Named("dataFolder") File dataFolder,
+            JarResource.StreamFunction getResourceStream,
+            PlanPlugin plugin
+    ) {
+        super(dataFolder, getResourceStream);
+        this.plugin = plugin;
     }
 
     @Override

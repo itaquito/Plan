@@ -1,7 +1,7 @@
 /*
  * The MIT License (MIT)
  *
- * Copyright (c) 2018 Risto Lahtela
+ * Copyright (c) 2021 AuroraLS3
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
  */
 package com.djrapitops.plan.settings.config;
 
-import com.djrapitops.plugin.utilities.Verify;
+import com.djrapitops.plan.utilities.UnitSemaphoreAccessLock;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
@@ -35,11 +35,13 @@ import java.util.stream.Collectors;
  * Represents a single node in a configuration file
  * <p>
  * Based on
- * https://github.com/Rsl1122/Abstract-Plugin-Framework/blob/72e221d3571ef200727713d10d3684c51e9f469d/AbstractPluginFramework/api/src/main/java/com/djrapitops/plugin/config/ConfigNode.java
+ * https://github.com/AuroraLS3/Abstract-Plugin-Framework/blob/72e221d3571ef200727713d10d3684c51e9f469d/AbstractPluginFramework/api/src/main/java/com/djrapitops/plugin/config/ConfigNode.java
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class ConfigNode {
+
+    protected final UnitSemaphoreAccessLock nodeModificationLock = new UnitSemaphoreAccessLock();
 
     protected final String key;
     protected ConfigNode parent;
@@ -69,13 +71,13 @@ public class ConfigNode {
             return Optional.empty();
         }
         String[] parts = splitPathInTwo(path);
-        String key = parts[0];
+        String lookingFor = parts[0];
         String leftover = parts[1];
 
         if (leftover.isEmpty()) {
-            return Optional.ofNullable(childNodes.get(key));
+            return Optional.ofNullable(childNodes.get(lookingFor));
         } else {
-            return getNode(key).flatMap(child -> child.getNode(leftover));
+            return getNode(lookingFor).flatMap(child -> child.getNode(leftover));
         }
     }
 
@@ -95,15 +97,15 @@ public class ConfigNode {
         ConfigNode newParent = this;
         if (path != null && !path.isEmpty()) {
             String[] parts = splitPathInTwo(path);
-            String key = parts[0];
+            String lookingFor = parts[0];
             String leftover = parts[1];
 
             // Add a new child
             ConfigNode child;
-            if (!childNodes.containsKey(key)) {
-                child = addChild(new ConfigNode(key, newParent, null));
+            if (!childNodes.containsKey(lookingFor)) {
+                child = addChild(new ConfigNode(lookingFor, newParent, null));
             } else {
-                child = childNodes.get(key);
+                child = childNodes.get(lookingFor);
             }
 
             // If the path ends return the leaf node
@@ -129,8 +131,11 @@ public class ConfigNode {
         if (parent == null) {
             throw new IllegalStateException("Can not remove root node from a tree.");
         }
-        parent.childNodes.remove(key);
+        nodeModificationLock.enter();
         parent.nodeOrder.remove(key);
+        parent.childNodes.remove(key);
+        nodeModificationLock.exit();
+
         updateParent(null);
 
         // Remove children recursively to avoid memory leaks
@@ -150,8 +155,12 @@ public class ConfigNode {
      */
     protected ConfigNode addChild(ConfigNode child) {
         getNode(child.key).ifPresent(ConfigNode::remove);
+
+        nodeModificationLock.enter();
         childNodes.put(child.key, child);
         nodeOrder.add(child.key);
+        nodeModificationLock.exit();
+
         child.updateParent(this);
         return child;
     }
@@ -198,16 +207,18 @@ public class ConfigNode {
     }
 
     public void reorder(List<String> newOrder) {
+        nodeModificationLock.enter();
         List<String> oldOrder = nodeOrder;
         nodeOrder = new ArrayList<>();
-        for (String key : newOrder) {
-            if (childNodes.containsKey(key)) {
-                nodeOrder.add(key);
+        for (String childKey : newOrder) {
+            if (childNodes.containsKey(childKey)) {
+                nodeOrder.add(childKey);
             }
         }
         // Add those that were not in the new order, but are in the old order.
         oldOrder.removeAll(nodeOrder);
         nodeOrder.addAll(oldOrder);
+        nodeModificationLock.exit();
     }
 
     /**
@@ -306,16 +317,16 @@ public class ConfigNode {
         }
 
         // Override value conditionally
-        if (Verify.isEmpty(value) && from.value != null) {
+        if (value == null || value.isEmpty() && from.value != null) {
             value = from.value;
         }
 
         // Copy all nodes from 'from'
-        for (String key : from.nodeOrder) {
-            ConfigNode newChild = from.childNodes.get(key);
+        for (String childKey : from.nodeOrder) {
+            ConfigNode newChild = from.childNodes.get(childKey);
 
             // Copy values recursively to children
-            ConfigNode created = addNode(key);
+            ConfigNode created = addNode(childKey);
             created.copyMissing(newChild);
         }
     }
@@ -326,11 +337,11 @@ public class ConfigNode {
         value = from.value;
 
         // Copy all nodes from 'from'
-        for (String key : from.nodeOrder) {
-            ConfigNode newChild = from.childNodes.get(key);
+        for (String childKey : from.nodeOrder) {
+            ConfigNode newChild = from.childNodes.get(childKey);
 
             // Copy values recursively to children
-            ConfigNode created = addNode(key);
+            ConfigNode created = addNode(childKey);
             created.copyAll(newChild);
         }
     }

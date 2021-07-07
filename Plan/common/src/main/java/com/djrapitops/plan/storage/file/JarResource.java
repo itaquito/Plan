@@ -29,7 +29,7 @@ import java.util.Scanner;
 /**
  * {@link Resource} implementation for something that is read via InputStream.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class JarResource implements Resource {
 
@@ -39,6 +39,10 @@ public class JarResource implements Resource {
     public JarResource(String resourceName, StreamSupplier streamSupplier) {
         this.resourceName = resourceName;
         this.streamSupplier = streamSupplier;
+    }
+
+    public JarResource(String resourceName, StreamFunction streamFunction) {
+        this(resourceName, () -> streamFunction.get(resourceName));
     }
 
     @Override
@@ -96,7 +100,11 @@ public class JarResource implements Resource {
         return resourceName;
     }
 
-    interface StreamSupplier {
+    public interface StreamSupplier {
         InputStream get() throws IOException;
+    }
+
+    public interface StreamFunction {
+        InputStream get(String value) throws IOException;
     }
 }

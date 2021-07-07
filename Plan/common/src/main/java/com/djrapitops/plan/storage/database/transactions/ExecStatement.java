@@ -25,13 +25,13 @@ import java.sql.SQLException;
 /**
  * SQL executing statement that closes appropriate elements.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class ExecStatement implements Executable {
 
     private final String sql;
 
-    public ExecStatement(String sql) {
+    protected ExecStatement(String sql) {
         this.sql = sql;
     }
 

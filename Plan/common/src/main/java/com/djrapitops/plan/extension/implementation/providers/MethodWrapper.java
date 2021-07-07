@@ -16,6 +16,7 @@
  */
 package com.djrapitops.plan.extension.implementation.providers;
 
+import com.djrapitops.plan.exceptions.DataExtensionMethodCallException;
 import com.djrapitops.plan.extension.DataExtension;
 import com.djrapitops.plan.extension.NotReadyException;
 import com.djrapitops.plan.extension.implementation.MethodType;
@@ -23,17 +24,19 @@ import com.djrapitops.plan.extension.implementation.MethodType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Wrap a Method so that it is easier to call.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class MethodWrapper<T> {
 
     private final Method method;
     private final Class<T> returnType;
     private final MethodType methodType;
+    private boolean disabled = false;
 
     public MethodWrapper(Method method, Class<T> returnType) {
         this.method = method;
@@ -42,17 +45,24 @@ public class MethodWrapper<T> {
     }
 
     public T callMethod(DataExtension extension, Parameters with) {
+        if (disabled) return null;
         try {
             return returnType.cast(with.usingOn(extension, method));
         } catch (InvocationTargetException notReadyToBeCalled) {
-            if (notReadyToBeCalled.getCause() instanceof NotReadyException) {
+            Throwable cause = notReadyToBeCalled.getCause();
+            if (cause instanceof NotReadyException || cause instanceof UnsupportedOperationException) {
                 return null; // Data or API not available to make the call.
             } else {
-                throw new IllegalArgumentException(method.getDeclaringClass() + " method " + method.getName() + " could not be called: " + notReadyToBeCalled.getMessage(), notReadyToBeCalled);
+                throw new DataExtensionMethodCallException(getErrorMessage(extension, notReadyToBeCalled), notReadyToBeCalled, extension.getPluginName(), getMethodName());
             }
         } catch (IllegalAccessException e) {
-            throw new IllegalArgumentException(method.getDeclaringClass() + " method " + method.getName() + " could not be called: " + e.getMessage(), e);
+            throw new DataExtensionMethodCallException(extension.getPluginName() + '.' + getMethodName() + " could not be accessed: " + e.getMessage(), e, extension.getPluginName(), getMethodName());
         }
+    }
+
+    private String getErrorMessage(DataExtension extension, InvocationTargetException e) {
+        Optional<Throwable> actualCause = Optional.ofNullable(e.getCause()); // InvocationTargetException
+        return extension.getPluginName() + '.' + getMethodName() + " errored: " + actualCause.orElse(e).toString();
     }
 
     public String getMethodName() {
@@ -65,6 +75,10 @@ public class MethodWrapper<T> {
 
     public Class<T> getReturnType() {
         return returnType;
+    }
+
+    public void disable() {
+        this.disabled = true;
     }
 
     @Override

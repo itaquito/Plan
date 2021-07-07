@@ -16,27 +16,29 @@
  */
 package com.djrapitops.plan.storage.database;
 
-import com.djrapitops.plan.DebugChannels;
 import com.djrapitops.plan.exceptions.database.DBInitException;
 import com.djrapitops.plan.exceptions.database.DBOpException;
 import com.djrapitops.plan.exceptions.database.FatalDBException;
+import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.PluginSettings;
 import com.djrapitops.plan.settings.config.paths.TimeSettings;
 import com.djrapitops.plan.settings.locale.Locale;
+import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.database.queries.Query;
 import com.djrapitops.plan.storage.database.transactions.Transaction;
 import com.djrapitops.plan.storage.database.transactions.init.CreateIndexTransaction;
 import com.djrapitops.plan.storage.database.transactions.init.CreateTablesTransaction;
 import com.djrapitops.plan.storage.database.transactions.init.OperationCriticalTransaction;
+import com.djrapitops.plan.storage.database.transactions.init.RemoveIncorrectTebexPackageDataPatch;
 import com.djrapitops.plan.storage.database.transactions.patches.*;
 import com.djrapitops.plan.utilities.java.ThrowableUtils;
-import com.djrapitops.plugin.api.TimeAmount;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
-import com.djrapitops.plugin.task.AbsRunnable;
-import com.djrapitops.plugin.task.RunnableFactory;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.scheduling.PluginRunnable;
+import net.playeranalytics.plugin.scheduling.RunnableFactory;
+import net.playeranalytics.plugin.scheduling.TimeAmount;
+import net.playeranalytics.plugin.server.PluginLogger;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
 import java.sql.Connection;
@@ -44,55 +46,53 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
+import java.util.Optional;
 import java.util.concurrent.*;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
  * Class containing main logic for different data related save and load functionality.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class SQLDB extends AbstractDatabase {
 
-    private final Supplier<UUID> serverUUIDSupplier;
+    private final Supplier<ServerUUID> serverUUIDSupplier;
 
     protected final Locale locale;
     protected final PlanConfig config;
     protected final RunnableFactory runnableFactory;
     protected final PluginLogger logger;
-    protected final ErrorHandler errorHandler;
+    protected final ErrorLogger errorLogger;
 
     private Supplier<ExecutorService> transactionExecutorServiceProvider;
     private ExecutorService transactionExecutor;
 
-    private final boolean devMode;
-
-    public SQLDB(
-            Supplier<UUID> serverUUIDSupplier,
+    protected SQLDB(
+            Supplier<ServerUUID> serverUUIDSupplier,
             Locale locale,
             PlanConfig config,
             RunnableFactory runnableFactory,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.serverUUIDSupplier = serverUUIDSupplier;
         this.locale = locale;
         this.config = config;
         this.runnableFactory = runnableFactory;
         this.logger = logger;
-        this.errorHandler = errorHandler;
-
-        devMode = config.isTrue(PluginSettings.DEV_MODE);
+        this.errorLogger = errorLogger;
 
         this.transactionExecutorServiceProvider = () -> {
             String nameFormat = "Plan " + getClass().getSimpleName() + "-transaction-thread-%d";
             return Executors.newSingleThreadExecutor(new BasicThreadFactory.Builder()
                     .namingPattern(nameFormat)
                     .uncaughtExceptionHandler((thread, throwable) -> {
-                        if (devMode) {
-                            errorHandler.log(L.WARN, getClass(), throwable);
+                        if (config.isTrue(PluginSettings.DEV_MODE)) {
+                            errorLogger.warn(throwable, ErrorContext.builder()
+                                    .whatToDo("THIS ERROR IS ONLY LOGGED IN DEV MODE")
+                                    .build());
                         }
                     }).build());
         };
@@ -125,6 +125,7 @@ public abstract class SQLDB extends AbstractDatabase {
         }
         transactionExecutor.shutdown();
         try {
+            logger.info(locale.getString(PluginLang.DISABLED_WAITING_TRANSACTIONS));
             Long waitMs = config.getOrDefault(TimeSettings.DB_TRANSACTION_FINISH_WAIT_DELAY, TimeUnit.SECONDS.toMillis(20L));
             if (waitMs > TimeUnit.MINUTES.toMillis(5L)) {
                 logger.warn(TimeSettings.DB_TRANSACTION_FINISH_WAIT_DELAY.getPath() + " was set to over 5 minutes, using 5 min instead.");
@@ -140,6 +141,8 @@ public abstract class SQLDB extends AbstractDatabase {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
+            logger.info(locale.getString(PluginLang.DISABLED_WAITING_TRANSACTIONS_COMPLETE));
         }
         return Collections.emptyList();
     }
@@ -173,7 +176,14 @@ public abstract class SQLDB extends AbstractDatabase {
                 new BadNukkitRegisterValuePatch(),
                 new LinkedToSecurityTablePatch(),
                 new LinkUsersToPlayersSecurityTablePatch(),
-                new LitebansTableHeaderPatch()
+                new LitebansTableHeaderPatch(),
+                new UserInfoHostnamePatch(),
+                new ServerIsProxyPatch(),
+                new UserInfoHostnameAllowNullPatch(),
+                new ServerTableRowPatch(),
+                new PlayerTableRowPatch(),
+                new ExtensionTableProviderValuesForPatch(),
+                new RemoveIncorrectTebexPackageDataPatch()
         };
     }
 
@@ -198,10 +208,18 @@ public abstract class SQLDB extends AbstractDatabase {
 
     private void registerIndexCreationTask() {
         try {
-            runnableFactory.create("Database Index Creation", new AbsRunnable() {
+            runnableFactory.create(new PluginRunnable() {
                 @Override
                 public void run() {
-                    executeTransaction(new CreateIndexTransaction());
+                    if (getState() == State.CLOSED || getState() == State.CLOSING) {
+                        cancel();
+                        return;
+                    }
+                    try {
+                        executeTransaction(new CreateIndexTransaction());
+                    } catch (DBOpException e) {
+                        errorLogger.warn(e);
+                    }
                 }
             }).runTaskLaterAsynchronously(TimeAmount.toTicks(1, TimeUnit.MINUTES));
         } catch (Exception ignore) {
@@ -243,25 +261,35 @@ public abstract class SQLDB extends AbstractDatabase {
 
         return CompletableFuture.supplyAsync(() -> {
             accessLock.checkAccess(transaction);
-            if (devMode) {
-                logger.getDebugLogger().logOn(DebugChannels.SQL, "Executing: " + transaction.getClass().getSimpleName());
-            }
             transaction.executeTransaction(this);
             return CompletableFuture.completedFuture(null);
-        }, getTransactionExecutor()).handle(errorHandler(origin));
+        }, getTransactionExecutor()).exceptionally(errorHandler(transaction, origin));
     }
 
-    private BiFunction<CompletableFuture<Object>, Throwable, CompletableFuture<Object>> errorHandler(Exception origin) {
-        return (obj, throwable) -> {
+    private Function<Throwable, CompletableFuture<Object>> errorHandler(Transaction transaction, Exception origin) {
+        return throwable -> {
             if (throwable == null) {
                 return CompletableFuture.completedFuture(null);
             }
-            if (throwable instanceof FatalDBException) {
+            if (throwable.getCause() instanceof FatalDBException) {
+                logger.error("Database failed to open, " + transaction.getClass().getName() + " failed to be executed.");
+                FatalDBException actual = (FatalDBException) throwable.getCause();
+                Optional<String> whatToDo = actual.getContext().flatMap(ErrorContext::getWhatToDo);
+                whatToDo.ifPresent(message -> logger.error("What to do: " + message));
+                if (!whatToDo.isPresent()) logger.error("Error msg: " + actual.getMessage());
                 setState(State.CLOSED);
             }
             ThrowableUtils.appendEntryPointToCause(throwable, origin);
 
-            errorHandler.log(L.ERROR, getClass(), throwable);
+            ErrorContext errorContext = ErrorContext.builder()
+                    .related("Transaction: " + transaction.getClass())
+                    .related("DB State: " + getState())
+                    .build();
+            if (getState() == State.CLOSED) {
+                errorLogger.critical(throwable, errorContext);
+            } else {
+                errorLogger.error(throwable, errorContext);
+            }
             return CompletableFuture.completedFuture(null);
         };
     }
@@ -286,11 +314,19 @@ public abstract class SQLDB extends AbstractDatabase {
         return Objects.hash(getType().getName());
     }
 
-    public Supplier<UUID> getServerUUIDSupplier() {
+    public Supplier<ServerUUID> getServerUUIDSupplier() {
         return serverUUIDSupplier;
     }
 
     public void setTransactionExecutorServiceProvider(Supplier<ExecutorService> transactionExecutorServiceProvider) {
         this.transactionExecutorServiceProvider = transactionExecutorServiceProvider;
+    }
+
+    public RunnableFactory getRunnableFactory() {
+        return runnableFactory;
+    }
+
+    public PluginLogger getLogger() {
+        return logger;
     }
 }

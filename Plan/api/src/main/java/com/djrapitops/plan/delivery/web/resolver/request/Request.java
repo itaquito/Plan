@@ -25,7 +25,7 @@ import java.util.Optional;
 /**
  * Represents a HTTP request to use with {@link Resolver}.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public final class Request {
 
@@ -115,5 +115,16 @@ public final class Request {
 
     public Request omitFirstInPath() {
         return new Request(method, path.omitFirst(), query, user, headers);
+    }
+
+    @Override
+    public String toString() {
+        return "Request{" +
+                "method='" + method + '\'' +
+                ", path=" + path +
+                ", query=" + query +
+                ", user=" + user +
+                ", headers=" + headers +
+                '}';
     }
 }

@@ -18,32 +18,115 @@ package com.djrapitops.plan.settings.locale;
 
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.LinkedList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * Utility for translating String.
  * <p>
  * Improves performance by avoiding a double for-each loop since this class can be considered final in the lambda
  * expression in {@link Locale#replaceLanguageInHtml(String)}.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 class TranslatedString {
+    private static final Pattern LINK_MATCHER = Pattern.compile("http(s|)://[\\w.\\-_%/?$#@!()&=]+");
 
-    private String translating;
+    private final List<TranslatedString> translating = new LinkedList<>();
 
     TranslatedString(String translating) {
-        this.translating = translating;
+        final Matcher matcher = LINK_MATCHER.matcher(translating);
+        int start = 0;
+        while (matcher.find()) {
+            String link = translating.substring(matcher.start(), matcher.end());
+            String prev = translating.substring(start, matcher.start());
+            if (!prev.isEmpty()) {
+                this.translating.add(new Translatable(prev));
+            }
+            start = matcher.end();
+            this.translating.add(new LockedString(link));
+        }
+        String remaining = translating.substring(start);
+        if (!remaining.isEmpty()) {
+            this.translating.add(new Translatable(remaining));
+        }
+    }
+
+    TranslatedString() {
     }
 
     public void translate(String replace, String with) {
-        translating = StringUtils.replace(translating, replace, with);
+        for (TranslatedString sub : translating) {
+            sub.translate(replace, with);
+        }
     }
 
     @Override
     public String toString() {
-        return translating;
+        StringBuilder builder = new StringBuilder();
+        toString(builder);
+        return builder.toString();
+    }
+
+    public void toString(StringBuilder builder) {
+        for (TranslatedString sub : translating) {
+            sub.toString(builder);
+        }
     }
 
     public int length() {
-        return translating.length();
+        int length = 0;
+        for (TranslatedString sub : translating) {
+            length += sub.length();
+        }
+        return length;
+    }
+
+    static class Translatable extends TranslatedString {
+
+        private String translating;
+
+        Translatable(String translating) {
+            this.translating = translating;
+        }
+
+        @Override
+        public void translate(String replace, String with) {
+            translating = StringUtils.replace(translating, replace, with);
+        }
+
+        @Override
+        public void toString(StringBuilder builder) {
+            builder.append(translating);
+        }
+
+        @Override
+        public int length() {
+            return translating.length();
+        }
+    }
+
+    static class LockedString extends TranslatedString {
+        final String text;
+
+        LockedString(String text) {
+            this.text = text;
+        }
+
+        @Override
+        public void translate(String replace, String with) {
+        }
+
+        @Override
+        public void toString(StringBuilder builder) {
+            builder.append(text);
+        }
+
+        @Override
+        public int length() {
+            return text.length();
+        }
     }
 }

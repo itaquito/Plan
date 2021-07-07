@@ -17,7 +17,12 @@
 package com.djrapitops.plan.storage.database;
 
 import com.djrapitops.plan.PlanSystem;
+import com.djrapitops.plan.delivery.DeliveryUtilities;
+import com.djrapitops.plan.extension.ExtensionSvc;
 import com.djrapitops.plan.identification.Server;
+import com.djrapitops.plan.identification.ServerInfo;
+import com.djrapitops.plan.identification.ServerUUID;
+import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.storage.database.queries.*;
 import com.djrapitops.plan.storage.database.transactions.StoreServerInformationTransaction;
 import com.djrapitops.plan.storage.database.transactions.commands.RemoveEverythingTransaction;
@@ -29,16 +34,18 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import utilities.DBPreparer;
 import utilities.RandomData;
-import utilities.mocks.PluginMockComponent;
+import utilities.TestConstants;
+import utilities.TestErrorLogger;
 
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for MySQL database.
@@ -46,7 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * The setup assumes CI environment with MySQL service running.
  * 'MYSQL_DB' database should be created before the test.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  * @see DatabaseTest
  * @see ExtensionsDatabaseTest
  * @see utilities.CIProperties for assumed MySQL setup.
@@ -67,19 +74,24 @@ class MySQLTest implements DatabaseTest,
 
     private static final int TEST_PORT_NUMBER = RandomData.randomInt(9005, 9500);
 
-    private static PlanSystem system;
     private static Database database;
+    private static DatabaseTestComponent component;
+    private static DBPreparer preparer;
 
     @BeforeAll
     static void setupDatabase(@TempDir Path temp) throws Exception {
-        system = new PluginMockComponent(temp).getPlanSystem();
-        Optional<Database> mysql = new DBPreparer(system, TEST_PORT_NUMBER).prepareMySQL();
+        component = DaggerDatabaseTestComponent.builder()
+                .bindTemporaryDirectory(temp)
+                .build();
+        preparer = new DBPreparer(component, TEST_PORT_NUMBER);
+        Optional<Database> mysql = preparer.prepareMySQL();
         Assumptions.assumeTrue(mysql.isPresent());
         database = mysql.get();
     }
 
     @BeforeEach
     void setUp() {
+        TestErrorLogger.throwErrors(true);
         db().executeTransaction(new Patch() {
             @Override
             public boolean hasBeenApplied() {
@@ -98,13 +110,13 @@ class MySQLTest implements DatabaseTest,
         db().executeTransaction(new CreateTablesTransaction());
         db().executeTransaction(new RemoveEverythingTransaction());
 
-        db().executeTransaction(new StoreServerInformationTransaction(new Server(-1, serverUUID(), "ServerName", "", 20)));
+        db().executeTransaction(new StoreServerInformationTransaction(new Server(serverUUID(), TestConstants.SERVER_NAME, "")));
         assertEquals(serverUUID(), ((SQLDB) db()).getServerUUIDSupplier().get());
     }
     @AfterAll
     static void disableSystem() {
         if (database != null) database.close();
-        system.disable();
+        preparer.tearDown();
     }
 
     @Override
@@ -113,12 +125,39 @@ class MySQLTest implements DatabaseTest,
     }
 
     @Override
-    public UUID serverUUID() {
-        return system.getServerInfo().getServerUUID();
+    public ServerUUID serverUUID() {
+        return component.serverInfo().getServerUUID();
+    }
+
+    @Override
+    public PlanConfig config() {
+        return component.config();
+    }
+
+    @Override
+    public DBSystem dbSystem() {
+        return component.dbSystem();
+    }
+
+    @Override
+    public ServerInfo serverInfo() {
+        return component.serverInfo();
+    }
+
+    @Override
+    public DeliveryUtilities deliveryUtilities() {
+        return component.deliveryUtilities();
+    }
+
+    @Override
+    public ExtensionSvc extensionService() {
+        return component.extensionService();
     }
 
     @Override
     public PlanSystem system() {
-        return system;
+        PlanSystem mockSystem = Mockito.mock(PlanSystem.class);
+        when(mockSystem.getPlanFiles()).thenReturn(component.files());
+        return mockSystem;
     }
 }

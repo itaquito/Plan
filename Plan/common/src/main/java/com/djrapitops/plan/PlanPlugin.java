@@ -16,8 +16,8 @@
  */
 package com.djrapitops.plan;
 
-import com.djrapitops.plugin.IPlugin;
-import com.djrapitops.plugin.command.ColorScheme;
+import com.djrapitops.plan.commands.use.ColorScheme;
+import com.djrapitops.plan.commands.use.Subcommand;
 
 import java.io.File;
 import java.io.InputStream;
@@ -25,23 +25,27 @@ import java.io.InputStream;
 /**
  * Abstraction interface for both Plan and PlanBungee.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public interface PlanPlugin extends IPlugin {
-
-    @Override
-    File getDataFolder();
+public interface PlanPlugin {
 
     InputStream getResource(String resource);
 
     ColorScheme getColorScheme();
-
-    @Override
-    boolean isReloading();
 
     PlanSystem getSystem();
 
     default boolean isSystemEnabled() {
         return getSystem().isEnabled();
     }
+
+    void registerCommand(Subcommand command);
+
+    void onEnable();
+
+    void onDisable();
+
+    @Deprecated
+    File getDataFolder();
+
 }

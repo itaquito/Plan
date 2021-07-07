@@ -27,7 +27,7 @@ import javax.inject.Singleton;
 /**
  * Factory for new instances of different {@link Formatter}s.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class Formatters {
@@ -42,6 +42,7 @@ public class Formatters {
     private final DayFormatter dayLongFormatter;
     private final SecondFormatter secondLongFormatter;
     private final ClockFormatter clockLongFormatter;
+    private final JavascriptDateFormatter javascriptDateFormatter;
     private final ISO8601NoClockFormatter iso8601NoClockLongFormatter;
     private final ISO8601NoClockTZIndependentFormatter iso8601NoClockTZIndependentFormatter;
 
@@ -49,6 +50,7 @@ public class Formatters {
 
     private final DecimalFormatter decimalFormatter;
     private final PercentageFormatter percentageFormatter;
+    private final ByteSizeFormatter byteSizeFormatter;
 
     @Inject
     public Formatters(PlanConfig config, Locale locale) {
@@ -56,6 +58,7 @@ public class Formatters {
         dayLongFormatter = new DayFormatter(config, locale);
         clockLongFormatter = new ClockFormatter(config, locale);
         secondLongFormatter = new SecondFormatter(config, locale);
+        javascriptDateFormatter = new JavascriptDateFormatter(config, locale);
         iso8601NoClockLongFormatter = new ISO8601NoClockFormatter(config, locale);
         iso8601NoClockTZIndependentFormatter = new ISO8601NoClockTZIndependentFormatter();
 
@@ -69,7 +72,7 @@ public class Formatters {
 
         decimalFormatter = new DecimalFormatter(config);
         percentageFormatter = new PercentageFormatter(decimalFormatter);
-
+        byteSizeFormatter = new ByteSizeFormatter(decimalFormatter);
     }
 
     public Formatter<DateHolder> year() {
@@ -108,6 +111,10 @@ public class Formatters {
         return iso8601NoClockFormatter;
     }
 
+    public Formatter<Long> javascriptDateFormatterLong() {
+        return javascriptDateFormatter;
+    }
+
     public Formatter<Long> iso8601NoClockLong() {
         return iso8601NoClockLongFormatter;
     }
@@ -126,5 +133,13 @@ public class Formatters {
 
     public Formatter<Double> decimals() {
         return decimalFormatter;
+    }
+
+    public Formatter<Double> byteSize() {
+        return byteSizeFormatter;
+    }
+
+    public Formatter<Long> byteSizeLong() {
+        return value -> byteSizeFormatter.apply((double) value);
     }
 }

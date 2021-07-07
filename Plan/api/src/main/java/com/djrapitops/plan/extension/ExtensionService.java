@@ -16,9 +16,11 @@
  */
 package com.djrapitops.plan.extension;
 
+import com.djrapitops.plan.extension.builder.ExtensionDataBuilder;
 import com.djrapitops.plan.extension.extractor.ExtensionExtractor;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Interface for registering {@link DataExtension}s.
@@ -32,7 +34,7 @@ import java.util.Optional;
  * - Register your {@link DataExtension} with {@link ExtensionService#register(DataExtension)}
  * - Catch a possible IllegalArgumentException in case the DataExtension implementation is invalid.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public interface ExtensionService {
 
@@ -44,7 +46,7 @@ public interface ExtensionService {
      * @throws IllegalStateException If Plan is installed, but not enabled.
      */
     static ExtensionService getInstance() {
-        return Optional.ofNullable(Holder.service)
+        return Optional.ofNullable(Holder.service.get())
                 .orElseThrow(() -> new IllegalStateException("ExtensionService has not been initialised yet."));
     }
 
@@ -60,6 +62,16 @@ public interface ExtensionService {
     Optional<Caller> register(DataExtension extension);
 
     /**
+     * Obtain a new {@link ExtensionDataBuilder}, it is recommended to use {@link DataExtension#newExtensionDataBuilder()}.
+     * <p>
+     * Requires Capability DATA_EXTENSION_BUILDER_API
+     *
+     * @param extension Extension for which this builder is.
+     * @return a new builder.
+     */
+    ExtensionDataBuilder newExtensionDataBuilder(DataExtension extension);
+
+    /**
      * Unregister your {@link DataExtension} implementation.
      * <p>
      * This method should be used if calling methods on the DataExtension suddenly becomes unavailable, due to
@@ -70,14 +82,14 @@ public interface ExtensionService {
     void unregister(DataExtension extension);
 
     class Holder {
-        static ExtensionService service;
+        static final AtomicReference<ExtensionService> service = new AtomicReference<>();
 
         private Holder() {
             /* Static variable holder */
         }
 
         static void set(ExtensionService service) {
-            Holder.service = service;
+            Holder.service.set(service);
         }
     }
 

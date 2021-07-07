@@ -16,12 +16,12 @@
  */
 package com.djrapitops.plan.delivery.webserver.cache;
 
-import java.util.UUID;
+import com.djrapitops.plan.identification.ServerUUID;
 
 /**
- * Enum for different JSON data entries that can be stored in {@link JSONCache}.
+ * Enum for different JSON data entries that can be stored in cache.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public enum DataID {
     PLAYERS,
@@ -30,14 +30,17 @@ public enum DataID {
     KILLS,
     PING_TABLE,
     GRAPH_PERFORMANCE,
+    GRAPH_OPTIMIZED_PERFORMANCE,
     GRAPH_ONLINE,
     GRAPH_UNIQUE_NEW,
+    GRAPH_HOURLY_UNIQUE_NEW,
     GRAPH_CALENDAR,
     GRAPH_WORLD_PIE,
     GRAPH_WORLD_MAP,
     GRAPH_ACTIVITY,
     GRAPH_PING,
     GRAPH_SERVER_PIE,
+    GRAPH_HOSTNAME_PIE,
     GRAPH_PUNCHCARD,
     SERVER_OVERVIEW,
     ONLINE_OVERVIEW,
@@ -49,8 +52,7 @@ public enum DataID {
     EXTENSION_TABS
     ;
 
-    public String of(UUID serverUUID) {
+    public String of(ServerUUID serverUUID) {
         return name() + '-' + serverUUID;
     }
-
 }

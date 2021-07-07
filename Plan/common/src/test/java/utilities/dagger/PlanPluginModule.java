@@ -16,37 +16,30 @@
  */
 package utilities.dagger;
 
-import com.djrapitops.plan.commands.PlanCommand;
-import com.djrapitops.plan.gathering.importing.EmptyImportSystem;
-import com.djrapitops.plan.gathering.importing.ImportSystem;
+import com.djrapitops.plan.delivery.webserver.cache.JSONFileStorage;
+import com.djrapitops.plan.delivery.webserver.cache.JSONStorage;
 import com.djrapitops.plan.identification.ServerInfo;
 import com.djrapitops.plan.identification.ServerServerInfo;
 import com.djrapitops.plan.settings.BukkitConfigSystem;
 import com.djrapitops.plan.settings.ConfigSystem;
-import com.djrapitops.plugin.command.CommandNode;
 import dagger.Binds;
 import dagger.Module;
-
-import javax.inject.Named;
 
 /**
  * Dagger module for binding Plan instance.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Module
 public interface PlanPluginModule {
-
-    @Binds
-    @Named("mainCommand")
-    CommandNode bindMainCommand(PlanCommand command);
-
-    @Binds
-    ImportSystem bindImportSystem(EmptyImportSystem emptyImportSystem);
 
     @Binds
     ConfigSystem bindBukkitConfigSystem(BukkitConfigSystem bukkitConfigSystem);
 
     @Binds
     ServerInfo bindServerInfo(ServerServerInfo serverServerInfo);
+
+    @Binds
+    JSONStorage bindJSONStorage(JSONFileStorage jsonFileStorage);
+
 }

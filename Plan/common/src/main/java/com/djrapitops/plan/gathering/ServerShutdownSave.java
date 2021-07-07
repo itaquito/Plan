@@ -16,49 +16,49 @@
  */
 package com.djrapitops.plan.gathering;
 
-import com.djrapitops.plan.delivery.domain.keys.SessionKeys;
 import com.djrapitops.plan.exceptions.database.DBInitException;
 import com.djrapitops.plan.gathering.cache.SessionCache;
-import com.djrapitops.plan.gathering.domain.Session;
+import com.djrapitops.plan.gathering.domain.ActiveSession;
+import com.djrapitops.plan.gathering.domain.FinishedSession;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.transactions.events.ServerShutdownTransaction;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.server.PluginLogger;
 
-import java.util.Map;
+import java.util.Collection;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 /**
  * Class in charge of performing save operations when the server shuts down.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class ServerShutdownSave {
 
     protected final PluginLogger logger;
     private final DBSystem dbSystem;
     private final Locale locale;
-    private final ErrorHandler errorHandler;
-    private boolean shuttingDown = false;
+    private final ErrorLogger errorLogger;
 
+    private boolean shuttingDown = false;
     private boolean startedDatabase = false;
 
-    public ServerShutdownSave(
+    protected ServerShutdownSave(
             Locale locale,
             DBSystem dbSystem,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.locale = locale;
         this.dbSystem = dbSystem;
         this.logger = logger;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     protected abstract boolean checkServerShuttingDownStatus();
@@ -72,7 +72,7 @@ public abstract class ServerShutdownSave {
             return Optional.empty();
         }
 
-        Map<UUID, Session> activeSessions = SessionCache.getActiveSessions();
+        Collection<ActiveSession> activeSessions = SessionCache.getActiveSessions();
         if (activeSessions.isEmpty()) {
             return Optional.empty();
         }
@@ -85,12 +85,15 @@ public abstract class ServerShutdownSave {
         return attemptSave(activeSessions);
     }
 
-    private Optional<Future<?>> attemptSave(Map<UUID, Session> activeSessions) {
+    private Optional<Future<?>> attemptSave(Collection<ActiveSession> activeSessions) {
         try {
-            prepareSessionsForStorage(activeSessions, System.currentTimeMillis());
-            return Optional.of(saveActiveSessions(activeSessions));
+            return Optional.of(saveActiveSessions(finishSessions(activeSessions, System.currentTimeMillis())));
         } catch (DBInitException e) {
-            errorHandler.log(L.ERROR, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder()
+                    .whatToDo("Find the sessions in the error file and save them manually or ignore. Report & delete the error file after.")
+                    .related("Shutdown save failed to init database.")
+                    .related(activeSessions)
+                    .build());
             return Optional.empty();
         } catch (IllegalStateException ignored) {
             /* Database is not initialized */
@@ -100,7 +103,7 @@ public abstract class ServerShutdownSave {
         }
     }
 
-    private Future<?> saveActiveSessions(Map<UUID, Session> activeSessions) {
+    private Future<?> saveActiveSessions(Collection<FinishedSession> finishedSessions) {
         Database database = dbSystem.getDatabase();
         if (database.getState() == Database.State.CLOSED) {
             // Ensure that database is not closed when performing the transaction.
@@ -108,20 +111,15 @@ public abstract class ServerShutdownSave {
             database.init();
         }
 
-        return saveSessions(activeSessions, database);
+        return saveSessions(finishedSessions, database);
     }
 
-    void prepareSessionsForStorage(Map<UUID, Session> activeSessions, long now) {
-        for (Session session : activeSessions.values()) {
-            Optional<Long> end = session.getValue(SessionKeys.END);
-            if (!end.isPresent()) {
-                session.endSession(now);
-            }
-        }
+    Collection<FinishedSession> finishSessions(Collection<ActiveSession> activeSessions, long now) {
+        return activeSessions.stream().map(session -> session.toFinishedSession(now)).collect(Collectors.toList());
     }
 
-    private Future<?> saveSessions(Map<UUID, Session> activeSessions, Database database) {
-        return database.executeTransaction(new ServerShutdownTransaction(activeSessions.values()));
+    private Future<?> saveSessions(Collection<FinishedSession> finishedSessions, Database database) {
+        return database.executeTransaction(new ServerShutdownTransaction(finishedSessions));
     }
 
     private void closeDatabase(Database database) {

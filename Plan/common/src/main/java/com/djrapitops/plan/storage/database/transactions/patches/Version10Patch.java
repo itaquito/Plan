@@ -24,6 +24,18 @@ import java.util.Optional;
 
 import static com.djrapitops.plan.storage.database.sql.building.Sql.FROM;
 
+/**
+ * Table schema change patch for version 4.0.0 to support BungeeCord servers.
+ * <p>
+ * This patch makes the database compatible with further changes to the schema,
+ * bugs in this patch are possible, as the patch is untested against new schema.
+ * <p>
+ * Version 10 comes from "schema version" that was in use in the database to version changes
+ * before Patch system was implemented.
+ *
+ * @author AuroraLS3
+ * @see VersionTableRemovalPatch for Patch that removes the schema versions
+ */
 public class Version10Patch extends Patch {
 
     private Integer serverID;
@@ -36,7 +48,7 @@ public class Version10Patch extends Patch {
     @Override
     protected void applyPatch() {
         Optional<Server> server = query(ServerQueries.fetchServerMatchingIdentifier(getServerUUID()));
-        serverID = server.map(Server::getId)
+        serverID = server.flatMap(Server::getId)
                 .orElseThrow(() -> new IllegalStateException("Server UUID was not registered, try rebooting the plugin."));
 
         alterTablesToV10();

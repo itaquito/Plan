@@ -16,12 +16,13 @@
  */
 package com.djrapitops.plan.utilities.java;
 
-import com.djrapitops.plugin.utilities.ArrayUtil;
+import java.util.Arrays;
+import java.util.stream.Stream;
 
 /**
- * Utilities for manipulating different Throwables.
+ * Utilities for manipulating different Throwable stack traces.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class ThrowableUtils {
 
@@ -34,10 +35,16 @@ public class ThrowableUtils {
         while (cause.getCause() != null) {
             cause = cause.getCause();
         }
-        cause.setStackTrace(ArrayUtil.merge(cause.getStackTrace(), originPoint.getStackTrace()));
+
+        cause.setStackTrace(
+                Stream.concat(
+                        Arrays.stream(cause.getStackTrace()),
+                        Arrays.stream(originPoint.getStackTrace())
+                ).toArray(StackTraceElement[]::new)
+        );
     }
 
-    public static String findCallerAfterClass(StackTraceElement[] stackTrace, Class afterThis) {
+    public static String findCallerAfterClass(StackTraceElement[] stackTrace, Class<?> afterThis) {
         boolean found = false;
         for (StackTraceElement stackTraceElement : stackTrace) {
             if (found) {

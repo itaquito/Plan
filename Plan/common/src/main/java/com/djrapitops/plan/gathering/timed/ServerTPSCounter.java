@@ -24,8 +24,8 @@ import com.djrapitops.plan.storage.database.transactions.events.TPSStoreTransact
 import com.djrapitops.plan.utilities.analysis.Average;
 import com.djrapitops.plan.utilities.analysis.Maximum;
 import com.djrapitops.plan.utilities.analysis.TimerAverage;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * TPSCounter extension for game server platforms.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class ServerTPSCounter<W> extends TPSCounter {
@@ -47,9 +47,9 @@ public class ServerTPSCounter<W> extends TPSCounter {
     private final ServerInfo serverInfo;
     private TPSCalculator indirectTPS;
     private TimerAverage directTPS;
-    private Maximum.ForInteger playersOnline;
-    private Average cpu;
-    private Average ram;
+    private final Maximum.ForInteger playersOnline;
+    private final Average cpu;
+    private final Average ram;
 
     @Inject
     public ServerTPSCounter(
@@ -58,9 +58,9 @@ public class ServerTPSCounter<W> extends TPSCounter {
             DBSystem dbSystem,
             ServerInfo serverInfo,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
-        super(logger, errorHandler);
+        super(logger, errorLogger);
 
         noDirectTPS = !serverSensor.supportsDirectTPS();
         this.serverSensor = serverSensor;

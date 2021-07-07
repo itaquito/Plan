@@ -27,18 +27,18 @@ import java.sql.SQLException;
 /**
  * SQL query that closes proper elements.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class QueryStatement<T> implements Query<T> {
 
     private final String sql;
     private final int fetchSize;
 
-    public QueryStatement(String sql) {
+    protected QueryStatement(String sql) {
         this(sql, 10);
     }
 
-    public QueryStatement(String sql, int fetchSize) {
+    protected QueryStatement(String sql, int fetchSize) {
         this.sql = sql;
         this.fetchSize = fetchSize;
     }
@@ -48,13 +48,19 @@ public abstract class QueryStatement<T> implements Query<T> {
         Connection connection = null;
         try {
             connection = db.getConnection();
-            try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-                return executeQuery(preparedStatement);
-            }
+            return executeWithConnection(connection);
         } catch (SQLException e) {
             throw DBOpException.forCause(sql, e);
         } finally {
             db.returnToPool(connection);
+        }
+    }
+
+    public T executeWithConnection(Connection connection) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            return executeQuery(preparedStatement);
+        } catch (SQLException e) {
+            throw DBOpException.forCause(sql, e);
         }
     }
 

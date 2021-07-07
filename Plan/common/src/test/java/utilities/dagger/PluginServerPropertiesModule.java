@@ -26,7 +26,7 @@ import java.net.InetSocketAddress;
 /**
  * Dagger module for Bukkit ServerProperties.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Module
 public class PluginServerPropertiesModule {
@@ -41,6 +41,6 @@ public class PluginServerPropertiesModule {
                 "1.13-git-mock",
                 () -> new InetSocketAddress(25565).getAddress().getHostAddress(),
                 20
-        ) {};
+        );
     }
 }

@@ -18,17 +18,13 @@ package com.djrapitops.plan.modules.velocity;
 
 import com.djrapitops.plan.PlanPlugin;
 import com.djrapitops.plan.PlanVelocity;
-import com.djrapitops.plan.commands.PlanProxyCommand;
-import com.djrapitops.plugin.command.CommandNode;
 import dagger.Binds;
 import dagger.Module;
-
-import javax.inject.Named;
 
 /**
  * Dagger module for binding PlanVelocity instance.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Module
 public interface VelocityPlanModule {
@@ -36,7 +32,4 @@ public interface VelocityPlanModule {
     @Binds
     PlanPlugin providePlanPlugin(PlanVelocity plugin);
 
-    @Binds
-    @Named("mainCommand")
-    CommandNode provideMainCommand(PlanProxyCommand command);
 }

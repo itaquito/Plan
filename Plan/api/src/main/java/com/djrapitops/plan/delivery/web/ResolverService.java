@@ -20,6 +20,7 @@ import com.djrapitops.plan.delivery.web.resolver.Resolver;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
@@ -29,12 +30,12 @@ import java.util.regex.Pattern;
  * eg. "/flyplugin/flying" to avoid collisions with other plugins.
  * You can also use {@link #getResolver(String)} to check if target already has a resolver.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public interface ResolverService {
 
     static ResolverService getInstance() {
-        return Optional.ofNullable(ResolverService.Holder.service)
+        return Optional.ofNullable(ResolverService.Holder.service.get())
                 .orElseThrow(() -> new IllegalStateException("ResolverService has not been initialised yet."));
     }
 
@@ -49,7 +50,7 @@ public interface ResolverService {
     void registerResolver(String pluginName, String start, Resolver resolver);
 
     /**
-     * Register a new resolver with regex that maches start of target.
+     * Register a new resolver with regex that matches start of target.
      * <p>
      * NOTICE: It is recommended to avoid too generic regex like "/.*" to not override existing resolvers.
      * <p>
@@ -88,14 +89,14 @@ public interface ResolverService {
     List<Resolver> getResolvers(String target);
 
     class Holder {
-        static ResolverService service;
+        static final AtomicReference<ResolverService> service = new AtomicReference<>();
 
         private Holder() {
             /* Static variable holder */
         }
 
         static void set(ResolverService service) {
-            ResolverService.Holder.service = service;
+            ResolverService.Holder.service.set(service);
         }
     }
 }

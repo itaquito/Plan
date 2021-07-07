@@ -18,6 +18,7 @@ package utilities;
 
 import com.djrapitops.plan.gathering.domain.*;
 import com.djrapitops.plan.identification.Server;
+import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.storage.database.transactions.StoreServerInformationTransaction;
 import com.djrapitops.plan.storage.database.transactions.Transaction;
 import com.djrapitops.plan.storage.database.transactions.events.*;
@@ -29,7 +30,7 @@ import java.util.UUID;
 /**
  * Class for saving test data to a database.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class TestData {
 
@@ -37,27 +38,27 @@ public class TestData {
         /* Utility class */
     }
 
-    private static UUID playerUUID = TestConstants.PLAYER_ONE_UUID;
-    private static UUID player2UUID = TestConstants.PLAYER_TWO_UUID;
-    private static UUID serverUUID = TestConstants.SERVER_UUID;
-    private static UUID server2UUID = TestConstants.SERVER_TWO_UUID;
-    private static String playerName = TestConstants.PLAYER_ONE_NAME;
-    private static String player2Name = TestConstants.PLAYER_TWO_NAME;
+    private static final UUID playerUUID = TestConstants.PLAYER_ONE_UUID;
+    private static final UUID player2UUID = TestConstants.PLAYER_TWO_UUID;
+    private static final ServerUUID serverUUID = TestConstants.SERVER_UUID;
+    private static final ServerUUID server2UUID = TestConstants.SERVER_TWO_UUID;
+    private static final String playerName = TestConstants.PLAYER_ONE_NAME;
+    private static final String player2Name = TestConstants.PLAYER_TWO_NAME;
 
-    private static String[] serverWorldNames = new String[]{
+    private static final String[] serverWorldNames = new String[]{
             TestConstants.WORLD_ONE_NAME, "World Two", "world"
     };
-    private static String[] server2WorldNames = new String[]{
+    private static final String[] server2WorldNames = new String[]{
             "Foo", "Bar", "Z"
     };
 
-    private static long playerFirstJoin = 1234500L;
-    private static long playerSecondJoin = 234000L;
+    private static final long playerFirstJoin = 1234500L;
+    private static final long playerSecondJoin = 234000L;
 
-    private static List<Session> playerSessions = createSessionsForPlayer(playerUUID);
-    private static List<Session> player2Sessions = createSessionsForPlayer(player2UUID);
+    private static final List<FinishedSession> playerSessions = createSessionsForPlayer(playerUUID);
+    private static final List<FinishedSession> player2Sessions = createSessionsForPlayer(player2UUID);
 
-    private static List<GeoInfo> playerGeoInfo = createGeoInfoForPlayer();
+    private static final List<GeoInfo> playerGeoInfo = createGeoInfoForPlayer();
 
     private static List<GeoInfo> createGeoInfoForPlayer() {
         List<GeoInfo> geoInfos = new ArrayList<>();
@@ -70,24 +71,24 @@ public class TestData {
         return geoInfos;
     }
 
-    private static List<Session> createSessionsForPlayer(UUID uuid) {
-        List<Session> sessions = new ArrayList<>();
+    private static List<FinishedSession> createSessionsForPlayer(UUID uuid) {
+        List<FinishedSession> sessions = new ArrayList<>();
 
         String[] gms = GMTimes.getGMKeyArray();
 
-        Session sessionOne = new Session(uuid, serverUUID, playerFirstJoin, serverWorldNames[0], gms[0]);
+        ActiveSession sessionOne = new ActiveSession(uuid, serverUUID, playerFirstJoin, serverWorldNames[0], gms[0]);
 
         UUID otherUUID = uuid.equals(playerUUID) ? player2UUID : playerUUID;
-        sessionOne.playerKilled(new PlayerKill(otherUUID, "Iron Sword", 1234750L));
-        sessionOne.playerKilled(new PlayerKill(otherUUID, "Gold Sword", 1234800L));
+        sessionOne.addPlayerKill(new PlayerKill(uuid, otherUUID, "Iron Sword", 1234750L));
+        sessionOne.addPlayerKill(new PlayerKill(uuid, otherUUID, "Gold Sword", 1234800L));
 
-        sessionOne.endSession(1235000L); // Length 500ms
-        sessions.add(sessionOne);
+        // Length 500ms
+        sessions.add(sessionOne.toFinishedSession(1235000L));
 
-        Session sessionTwo = new Session(uuid, server2UUID, playerSecondJoin, server2WorldNames[0], gms[1]);
+        ActiveSession sessionTwo = new ActiveSession(uuid, server2UUID, playerSecondJoin, server2WorldNames[0], gms[1]);
         sessionTwo.changeState(server2WorldNames[1], gms[0], 334000L); // Length 100s
-        sessionTwo.endSession(434000L); // Length 200s
-        sessions.add(sessionTwo);
+        // Length 200s
+        sessions.add(sessionTwo.toFinishedSession(434000L));
 
         return sessions;
     }
@@ -96,8 +97,8 @@ public class TestData {
         return new Transaction() {
             @Override
             protected void performOperations() {
-                executeOther(new StoreServerInformationTransaction(new Server(-1, serverUUID, "Server 1", "", 20)));
-                executeOther(new StoreServerInformationTransaction(new Server(-1, server2UUID, "Server 2", "", 50)));
+                executeOther(new StoreServerInformationTransaction(new Server(serverUUID, "Server 1", "")));
+                executeOther(new StoreServerInformationTransaction(new Server(server2UUID, "Server 2", "")));
 
                 for (String worldName : serverWorldNames) {
                     executeOther(new WorldNameStoreTransaction(serverUUID, worldName));
@@ -115,14 +116,16 @@ public class TestData {
                 new Transaction() {
                     @Override
                     protected void performOperations() {
-                        executeOther(new PlayerServerRegisterTransaction(playerUUID, () -> playerFirstJoin, playerName, serverUUID));
-                        executeOther(new PlayerServerRegisterTransaction(playerUUID, () -> playerSecondJoin, playerName, server2UUID));
+                        executeOther(new PlayerServerRegisterTransaction(playerUUID, () -> playerFirstJoin,
+                                playerName, serverUUID, TestConstants.GET_PLAYER_HOSTNAME));
+                        executeOther(new PlayerServerRegisterTransaction(playerUUID, () -> playerSecondJoin,
+                                playerName, server2UUID, TestConstants.GET_PLAYER_HOSTNAME));
 
                         for (GeoInfo geoInfo : playerGeoInfo) {
                             executeOther(new GeoInfoStoreTransaction(playerUUID, geoInfo));
                         }
 
-                        for (Session session : playerSessions) {
+                        for (FinishedSession session : playerSessions) {
                             executeOther(new SessionEndTransaction(session));
                         }
                     }
@@ -136,14 +139,16 @@ public class TestData {
                 new Transaction() {
                     @Override
                     protected void performOperations() {
-                        executeOther(new PlayerServerRegisterTransaction(player2UUID, () -> playerFirstJoin, player2Name, serverUUID));
-                        executeOther(new PlayerServerRegisterTransaction(player2UUID, () -> playerSecondJoin, player2Name, server2UUID));
+                        executeOther(new PlayerServerRegisterTransaction(player2UUID, () -> playerFirstJoin,
+                                player2Name, serverUUID, TestConstants.GET_PLAYER_HOSTNAME));
+                        executeOther(new PlayerServerRegisterTransaction(player2UUID, () -> playerSecondJoin,
+                                player2Name, server2UUID, TestConstants.GET_PLAYER_HOSTNAME));
 
                         for (GeoInfo geoInfo : playerGeoInfo) {
                             executeOther(new GeoInfoStoreTransaction(player2UUID, geoInfo));
                         }
 
-                        for (Session session : player2Sessions) {
+                        for (FinishedSession session : player2Sessions) {
                             executeOther(new SessionEndTransaction(session));
                         }
                     }
@@ -159,11 +164,11 @@ public class TestData {
         return server2WorldNames;
     }
 
-    public static List<Session> getPlayerSessions() {
+    public static List<FinishedSession> getPlayerSessions() {
         return playerSessions;
     }
 
-    public static List<Session> getPlayer2Sessions() {
+    public static List<FinishedSession> getPlayer2Sessions() {
         return player2Sessions;
     }
 

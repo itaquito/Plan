@@ -19,8 +19,8 @@ package com.djrapitops.plan;
 import com.djrapitops.plan.gathering.ServerShutdownSave;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.storage.database.DBSystem;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -28,7 +28,7 @@ import javax.inject.Singleton;
 /**
  * ServerShutdownSave implementation for Nukkit based servers.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class NukkitServerShutdownSave extends ServerShutdownSave {
@@ -38,9 +38,9 @@ public class NukkitServerShutdownSave extends ServerShutdownSave {
             Locale locale,
             DBSystem dbSystem,
             PluginLogger logger,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
-        super(locale, dbSystem, logger, errorHandler);
+        super(locale, dbSystem, logger, errorLogger);
     }
 
     @Override

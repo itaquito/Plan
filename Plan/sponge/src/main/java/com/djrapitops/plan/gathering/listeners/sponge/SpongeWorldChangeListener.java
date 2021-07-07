@@ -17,13 +17,13 @@
 package com.djrapitops.plan.gathering.listeners.sponge;
 
 import com.djrapitops.plan.gathering.cache.SessionCache;
-import com.djrapitops.plan.gathering.domain.Session;
+import com.djrapitops.plan.gathering.domain.ActiveSession;
 import com.djrapitops.plan.identification.ServerInfo;
 import com.djrapitops.plan.settings.config.WorldAliasSettings;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.transactions.events.WorldNameStoreTransaction;
-import com.djrapitops.plugin.logging.L;
-import com.djrapitops.plugin.logging.error.ErrorHandler;
+import com.djrapitops.plan.utilities.logging.ErrorContext;
+import com.djrapitops.plan.utilities.logging.ErrorLogger;
 import org.spongepowered.api.data.key.Keys;
 import org.spongepowered.api.entity.living.player.Player;
 import org.spongepowered.api.entity.living.player.gamemode.GameMode;
@@ -39,26 +39,26 @@ import java.util.UUID;
 /**
  * Listener for World change on Sponge.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class SpongeWorldChangeListener {
 
     private final WorldAliasSettings worldAliasSettings;
     private final ServerInfo serverInfo;
     private final DBSystem dbSystem;
-    private ErrorHandler errorHandler;
+    private final ErrorLogger errorLogger;
 
     @Inject
     public SpongeWorldChangeListener(
             WorldAliasSettings worldAliasSettings,
             ServerInfo serverInfo,
             DBSystem dbSystem,
-            ErrorHandler errorHandler
+            ErrorLogger errorLogger
     ) {
         this.worldAliasSettings = worldAliasSettings;
         this.serverInfo = serverInfo;
         this.dbSystem = dbSystem;
-        this.errorHandler = errorHandler;
+        this.errorLogger = errorLogger;
     }
 
     @Listener(order = Order.POST)
@@ -70,7 +70,7 @@ public class SpongeWorldChangeListener {
         try {
             actOnEvent(event, player);
         } catch (Exception e) {
-            errorHandler.log(L.ERROR, this.getClass(), e);
+            errorLogger.error(e, ErrorContext.builder().related(event).build());
         }
     }
 
@@ -85,7 +85,7 @@ public class SpongeWorldChangeListener {
         dbSystem.getDatabase().executeTransaction(new WorldNameStoreTransaction(serverInfo.getServerUUID(), worldName));
         worldAliasSettings.addWorld(worldName);
 
-        Optional<Session> cachedSession = SessionCache.getCachedSession(uuid);
+        Optional<ActiveSession> cachedSession = SessionCache.getCachedSession(uuid);
         cachedSession.ifPresent(session -> session.changeState(worldName, gameMode, time));
     }
 

@@ -28,6 +28,7 @@ import com.djrapitops.plan.delivery.web.resolver.exception.NotFoundException;
 import com.djrapitops.plan.delivery.web.resource.WebResource;
 import com.djrapitops.plan.delivery.webserver.auth.FailReason;
 import com.djrapitops.plan.exceptions.WebUserAuthException;
+import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.ErrorPageLang;
 import com.djrapitops.plan.settings.theme.Theme;
@@ -50,7 +51,7 @@ import java.util.UUID;
 /**
  * Factory for creating different {@link Response} objects.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class ResponseFactory {
@@ -79,14 +80,6 @@ public class ResponseFactory {
     public WebResource getResource(String resourceName) {
         return ResourceService.getInstance().getResource("Plan", resourceName,
                 () -> files.getResourceFromJar("web/" + resourceName).asWebResource());
-    }
-
-    public Response debugPageResponse() {
-        try {
-            return forPage(pageFactory.debugPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate debug page");
-        }
     }
 
     private Response forPage(Page page) {
@@ -137,8 +130,8 @@ public class ResponseFactory {
                 .build();
     }
 
-    public Response internalErrorResponse(Throwable e, String s) {
-        return forInternalError(e, s);
+    public Response internalErrorResponse(Throwable e, String cause) {
+        return forInternalError(e, cause);
     }
 
     public Response networkPageResponse() {
@@ -151,7 +144,7 @@ public class ResponseFactory {
         }
     }
 
-    public Response serverPageResponse(UUID serverUUID) {
+    public Response serverPageResponse(ServerUUID serverUUID) {
         Optional<Response> error = checkDbClosedError();
         if (error.isPresent()) return error.get();
         try {
@@ -175,7 +168,11 @@ public class ResponseFactory {
         try {
             String content = UnaryChain.of(getResource(fileName).asString())
                     .chain(theme::replaceThemeColors)
-                    .chain(locale::replaceLanguageInJavascript)
+                    .chain(resource -> {
+                        if (fileName.startsWith("vendor/") || fileName.startsWith("/vendor/"))
+                            return resource;
+                        return locale.replaceLanguageInJavascript(resource);
+                    })
                     .apply();
             return Response.builder()
                     .setMimeType(MimeType.JS)
@@ -247,6 +244,17 @@ public class ResponseFactory {
                     .build();
         } catch (UncheckedIOException e) {
             return forInternalError(e, "Could not read favicon");
+        }
+    }
+
+    public Response robotsResponse() {
+        try {
+            return Response.builder()
+                    .setMimeType("text/plain")
+                    .setContent(getResource("robots.txt"))
+                    .build();
+        } catch (UncheckedIOException e) {
+            return forInternalError(e, "Could not read robots.txt");
         }
     }
 
@@ -345,6 +353,15 @@ public class ResponseFactory {
                 .build();
     }
 
+    public Response ipWhitelist403(String accessor) {
+        return Response.builder()
+                .setMimeType(MimeType.HTML)
+                .setContent("<h1>403 Forbidden</h1>" +
+                        "<p>IP-whitelist enabled, \"" + accessor + "\" is not on the list!</p>")
+                .setStatus(403)
+                .build();
+    }
+
     public Response basicAuth() {
         try {
             String tips = "<br>- Ensure you have registered a user with <b>/plan register</b><br>"
@@ -397,6 +414,22 @@ public class ResponseFactory {
             return forPage(pageFactory.registerPage());
         } catch (IOException e) {
             return forInternalError(e, "Failed to generate player page");
+        }
+    }
+
+    public Response queryPageResponse() {
+        try {
+            return forPage(pageFactory.queryPage());
+        } catch (IOException e) {
+            return forInternalError(e, "Failed to generate query page");
+        }
+    }
+
+    public Response errorsPageResponse() {
+        try {
+            return forPage(pageFactory.errorsPage());
+        } catch (IOException e) {
+            return forInternalError(e, "Failed to generate errors page");
         }
     }
 }

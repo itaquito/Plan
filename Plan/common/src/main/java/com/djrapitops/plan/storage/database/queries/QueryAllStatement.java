@@ -23,14 +23,14 @@ import java.sql.SQLException;
 /**
  * SQL query that doesn't require preparing that closes proper elements.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class QueryAllStatement<T> extends QueryStatement<T> {
-    public QueryAllStatement(String sql) {
+    protected QueryAllStatement(String sql) {
         super(sql);
     }
 
-    public QueryAllStatement(String sql, int fetchSize) {
+    protected QueryAllStatement(String sql, int fetchSize) {
         super(sql, fetchSize);
     }
 

@@ -22,11 +22,10 @@ import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.DataGatheringSettings;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.PluginLang;
-import com.djrapitops.plugin.logging.console.PluginLogger;
-import com.djrapitops.plugin.task.AbsRunnable;
-import com.djrapitops.plugin.task.RunnableFactory;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import net.playeranalytics.plugin.scheduling.RunnableFactory;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -39,7 +38,7 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * It caches all IPs with their matching country.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  * @author Fuzzlemann
  */
 @Singleton
@@ -52,7 +51,6 @@ public class GeolocationCache implements SubSystem {
     private final Cache<String, String> cache;
 
     private final Geolocator geoLite2Geolocator;
-    private final Geolocator ip2cGeolocator;
 
     private Geolocator inUseGeolocator;
 
@@ -61,14 +59,12 @@ public class GeolocationCache implements SubSystem {
             Locale locale,
             PlanConfig config,
             GeoLite2Geolocator geoLite2Geolocator,
-            IP2CGeolocator ip2cGeolocator,
             PluginLogger logger,
             RunnableFactory runnableFactory
     ) {
         this.locale = locale;
         this.config = config;
         this.geoLite2Geolocator = geoLite2Geolocator;
-        this.ip2cGeolocator = ip2cGeolocator;
         this.logger = logger;
         this.runnableFactory = runnableFactory;
 
@@ -80,13 +76,9 @@ public class GeolocationCache implements SubSystem {
     @Override
     public void enable() {
         if (config.isTrue(DataGatheringSettings.GEOLOCATIONS)) {
-            runnableFactory.create("Geolocator init", new AbsRunnable() {
-                @Override
-                public void run() {
-                    if (inUseGeolocator == null) tryToPrepareGeoLite2();
-                    if (inUseGeolocator == null) tryToPrepareIP2CGeolocator();
-                    if (inUseGeolocator == null) logger.error("Failed to enable geolocation.");
-                }
+            runnableFactory.create(() -> {
+                if (inUseGeolocator == null) tryToPrepareGeoLite2();
+                if (inUseGeolocator == null) logger.error("Failed to enable geolocation.");
             }).runTaskAsynchronously();
         } else {
             logger.info(locale.getString(PluginLang.ENABLE_NOTIFY_GEOLOCATIONS_DISABLED));
@@ -97,24 +89,12 @@ public class GeolocationCache implements SubSystem {
         return inUseGeolocator != null;
     }
 
-    private void tryToPrepareIP2CGeolocator() {
-        logger.warn("Fallback: using IP2C for Geolocation (doesn't support IPv6).");
-        try {
-            ip2cGeolocator.prepare();
-            inUseGeolocator = ip2cGeolocator;
-        } catch (PreparationException e) {
-            logger.warn(e.getMessage());
-        } catch (IOException e) {
-            logger.error("Fallback to IP2C failed: " + e.getMessage());
-        }
-    }
-
     public void tryToPrepareGeoLite2() {
         try {
             geoLite2Geolocator.prepare();
             inUseGeolocator = geoLite2Geolocator;
         } catch (PreparationException e) {
-            logger.info(e.getMessage());
+            logger.warn(e.getMessage());
         } catch (UnknownHostException e) {
             logger.error(locale.getString(PluginLang.ENABLE_NOTIFY_GEOLOCATIONS_INTERNET_REQUIRED));
         } catch (IOException e) {

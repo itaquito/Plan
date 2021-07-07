@@ -21,7 +21,7 @@ import com.djrapitops.plan.exceptions.EnableException;
 /**
  * Represents a system that can be enabled and disabled.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public interface SubSystem {
 
@@ -30,7 +30,7 @@ public interface SubSystem {
      *
      * @throws EnableException If an error occurred during enable and it is fatal to the subsystem.
      */
-    void enable() throws EnableException;
+    void enable();
 
     /**
      * Performs disable actions for the subsystem

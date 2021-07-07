@@ -21,6 +21,7 @@ import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -28,7 +29,7 @@ import java.util.function.Consumer;
  * <p>
  * Requires Capability QUERY_API
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public interface QueryService {
 
@@ -40,14 +41,14 @@ public interface QueryService {
      * @throws IllegalStateException If Plan is installed, but not enabled.
      */
     static QueryService getInstance() {
-        return Optional.ofNullable(Holder.service)
+        return Optional.ofNullable(Holder.service.get())
                 .orElseThrow(() -> new IllegalStateException("QueryService has not been initialised yet."));
     }
 
     /**
      * Get what kind of database is in use.
      *
-     * @return H2, SQLITE or MYSQL
+     * @return SQLITE or MYSQL
      * @throws IllegalStateException If database has not been initialized (Plugin failed to enable)
      */
     String getDBType();
@@ -112,7 +113,7 @@ public interface QueryService {
     /**
      * Get the UUID of this server.
      *
-     * @return Optinal of the server UUID, empty if server did not start properly.
+     * @return Optional of the server UUID, empty if server did not start properly.
      */
     Optional<UUID> getServerUUID();
 
@@ -149,14 +150,14 @@ public interface QueryService {
     }
 
     class Holder {
-        static QueryService service;
+        static final AtomicReference<QueryService> service = new AtomicReference<>();
 
         private Holder() {
             /* Static variable holder */
         }
 
         static void set(QueryService service) {
-            Holder.service = service;
+            Holder.service.set(service);
         }
     }
 

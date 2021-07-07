@@ -23,12 +23,21 @@ import java.util.function.Consumer;
  * <p>
  * Only one instance exists per runtime in order to notify others when the plugin enables.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class CapabilitySvc implements CapabilityService {
 
+    private CapabilitySvc() {
+        // Hide constructor
+    }
+
+    /**
+     * Implementation detail.
+     *
+     * @param isEnabled Did the plugin enable properly.
+     */
     public static void notifyAboutEnable(boolean isEnabled) {
-        for (Consumer<Boolean> enableListener : CapabilityService.ListHolder.ENABLE_LISTENERS) {
+        for (Consumer<Boolean> enableListener : CapabilityService.ListHolder.enableListeners.get()) {
             enableListener.accept(isEnabled);
         }
     }

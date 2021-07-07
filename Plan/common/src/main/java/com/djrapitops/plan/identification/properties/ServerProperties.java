@@ -22,9 +22,9 @@ import java.util.function.Supplier;
  * Class responsible for holding server variable values that do not change
  * without a reload.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
-public abstract class ServerProperties {
+public class ServerProperties {
 
     private final String name;
     private final int port;
@@ -33,7 +33,7 @@ public abstract class ServerProperties {
     private final Supplier<String> ip;
     private final int maxPlayers;
 
-    protected ServerProperties(
+    public ServerProperties(
             String name,
             int port,
             String version,

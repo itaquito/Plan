@@ -44,7 +44,7 @@ import java.util.UUID;
 /**
  * Handles exporting of /player page html, data and resources.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 @Singleton
 public class PlayerPageExporter extends FileExporter {
@@ -82,15 +82,17 @@ public class PlayerPageExporter extends FileExporter {
     public void export(Path toDirectory, UUID playerUUID, String playerName) throws IOException {
         Database.State dbState = dbSystem.getDatabase().getState();
         if (dbState == Database.State.CLOSED || dbState == Database.State.CLOSING) return;
-        if (!dbSystem.getDatabase().query(PlayerFetchQueries.isPlayerRegistered(playerUUID))) return;
+        if (Boolean.FALSE.equals(dbSystem.getDatabase().query(PlayerFetchQueries.isPlayerRegistered(playerUUID)))) {
+            return;
+        }
 
         ExportPaths exportPaths = new ExportPaths();
         exportPaths.put("../network", toRelativePathFromRoot("network"));
         exportPaths.put("../server/", toRelativePathFromRoot("server"));
         exportRequiredResources(exportPaths, toDirectory);
 
-        Path playerDirectory = toDirectory.resolve("player/" + toFileName(playerName));
-        exportJSON(exportPaths, playerDirectory, playerUUID, playerName);
+        Path playerDirectory = toDirectory.resolve("player/" + toFileName(playerUUID.toString()));
+        exportJSON(exportPaths, playerDirectory, playerUUID);
         exportHtml(exportPaths, playerDirectory, playerUUID);
         exportPaths.clear();
     }
@@ -106,11 +108,11 @@ public class PlayerPageExporter extends FileExporter {
         }
     }
 
-    private void exportJSON(ExportPaths exportPaths, Path toDirectory, UUID playerUUID, String playerName) throws IOException {
-        exportJSON(exportPaths, toDirectory, "player?player=" + playerUUID, playerName);
+    private void exportJSON(ExportPaths exportPaths, Path toDirectory, UUID playerUUID) throws IOException {
+        exportJSON(exportPaths, toDirectory, "player?player=" + playerUUID);
     }
 
-    private void exportJSON(ExportPaths exportPaths, Path toDirectory, String resource, String playerName) throws IOException {
+    private void exportJSON(ExportPaths exportPaths, Path toDirectory, String resource) throws IOException {
         Optional<Response> found = getJSONResponse(resource);
         if (!found.isPresent()) {
             throw new NotFoundException(resource + " was not properly exported: no response");
@@ -119,7 +121,7 @@ public class PlayerPageExporter extends FileExporter {
         String jsonResourceName = toFileName(toJSONResourceName(resource)) + ".json";
 
         export(toDirectory.resolve(jsonResourceName), found.get().getBytes());
-        exportPaths.put("../v1/player?player=" + playerName, "./" + jsonResourceName);
+        exportPaths.put("../v1/player?player=${encodeURIComponent(playerName)}", "./" + jsonResourceName);
     }
 
     private String toJSONResourceName(String resource) {
@@ -141,10 +143,8 @@ public class PlayerPageExporter extends FileExporter {
                 "../img/Flaticon_circle.png",
                 "../css/sb-admin-2.css",
                 "../css/style.css",
-                "../vendor/jquery/jquery.min.js",
-                "../vendor/bootstrap/js/bootstrap.bundle.min.js",
-                "../vendor/datatables/jquery.dataTables.min.js",
-                "../vendor/datatables/dataTables.bootstrap4.min.js",
+                "../vendor/datatables/datatables.min.js",
+                "../vendor/datatables/datatables.min.css",
                 "../vendor/highcharts/highstock.js",
                 "../vendor/highcharts/map.js",
                 "../vendor/highcharts/world.js",
@@ -153,6 +153,7 @@ public class PlayerPageExporter extends FileExporter {
                 "../vendor/highcharts/no-data-to-display.js",
                 "../vendor/fullcalendar/fullcalendar.min.css",
                 "../vendor/momentjs/moment.js",
+                "../vendor/masonry/masonry.pkgd.min.js",
                 "../vendor/fullcalendar/fullcalendar.min.js",
                 "../vendor/fontawesome-free/css/all.min.css",
                 "../vendor/fontawesome-free/webfonts/fa-brands-400.eot",
@@ -189,7 +190,7 @@ public class PlayerPageExporter extends FileExporter {
                 () -> files.getResourceFromJar("web/" + resourceName).asWebResource());
         Path to = toDirectory.resolve(resourceName);
 
-        if (resourceName.endsWith(".css")) {
+        if (resourceName.endsWith(".css") || resourceName.endsWith("color-selector.js")) {
             export(to, theme.replaceThemeColors(resource.asString()));
         } else if (Resource.isTextResource(resourceName)) {
             export(to, resource.asString());
@@ -199,7 +200,7 @@ public class PlayerPageExporter extends FileExporter {
     }
 
     private String toRelativePathFromRoot(String resourceName) {
-        // Player html is exported at /player/<name>/index.html
+        // Player html is exported at /player/<uuid>/index.html
         return "../../" + toNonRelativePath(resourceName);
     }
 

@@ -24,29 +24,39 @@ import java.util.function.Predicate;
 /**
  * Represents a path to a config value.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public abstract class Setting<T> {
 
     protected final String path;
     private final Predicate<T> validator;
+    private T defaultValue;
 
-    public Setting(String path, Class<T> type) {
+    protected Setting(String path, Class<T> type) {
         this(path, type, Setting::nullValidator);
     }
 
-    public Setting(String path, Class<T> type, Predicate<T> validator) {
+    protected Setting(String path, Class<T> type, Predicate<T> validator) {
         // null validator has to be called before the actual validator to avoid possible null errors.
         this(path, Type.ofClass(type), ((Predicate<T>) Setting::nullValidator).and(validator));
     }
 
-    public Setting(String path, Type<T> type) {
+    protected Setting(String path, Type<T> type) {
         this(path, type, Setting::nullValidator);
     }
 
-    public Setting(String path, Type<T> type, Predicate<T> validator) {
+    protected Setting(String path, Type<T> type, Predicate<T> validator) {
         this.path = path;
         this.validator = validator;
+    }
+
+    protected Setting(String path, T defaultValue) {
+        this(path, Setting::nullValidator, defaultValue);
+    }
+
+    protected Setting(String path, Predicate<T> validator, T defaultValue) {
+        this(path, Type.of(defaultValue), validator);
+        this.defaultValue = defaultValue;
     }
 
     public static <T> boolean nullValidator(T value) {
@@ -72,6 +82,14 @@ public abstract class Setting<T> {
 
     public boolean isValid(T value) {
         return validator.test(value);
+    }
+
+    public boolean isInvalid(T value) {
+        return !isValid(value);
+    }
+
+    public T getDefaultValue() {
+        return defaultValue;
     }
 
     @Override

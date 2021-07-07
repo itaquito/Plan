@@ -16,7 +16,7 @@
  */
 package com.djrapitops.plan.storage.database;
 
-import com.djrapitops.plan.exceptions.database.DBOpException;
+import com.djrapitops.plan.exceptions.EnableException;
 import com.djrapitops.plan.storage.database.transactions.Transaction;
 import com.djrapitops.plan.storage.database.transactions.init.OperationCriticalTransaction;
 
@@ -26,7 +26,7 @@ import com.djrapitops.plan.storage.database.transactions.init.OperationCriticalT
  * - OperationCriticalTransactions pass through the Access lock without blocking to allow the initial transactions.
  * - Queries inside Transactions skip access log to allow OperationCriticalTransactions perform queries.
  *
- * @author Rsl1122
+ * @author AuroraLS3
  */
 public class DBAccessLock {
 
@@ -58,7 +58,7 @@ public class DBAccessLock {
                 synchronized (lockObject) {
                     lockObject.wait();
                     if (database.getState() == Database.State.CLOSED) {
-                        throw new DBOpException("Database failed to open, Query has failed. (This exception is necessary to not keep query threads waiting)");
+                        throw new EnableException("Database failed to open, Query has failed. (This exception is necessary to not keep query threads waiting)");
                     }
                 }
             }
